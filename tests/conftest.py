@@ -192,3 +192,50 @@ def make_placement(session, make_request, make_candidate):
         ).scalar_one()
 
     return _make
+
+
+# --- auth fixtures --------------------------------------------------------
+
+STAFF_PASSWORD = "correct horse battery staple"
+
+
+@pytest.fixture
+def staff_login(session, staff_id):
+    """A staff account with a real password set, and its phone number."""
+    from app.auth import set_password
+
+    set_password(session, staff_id, STAFF_PASSWORD)
+    phone = session.execute(
+        text("SELECT phone FROM staff WHERE staff_id = :sid"), {"sid": staff_id}
+    ).scalar_one()
+    return {"phone": phone, "password": STAFF_PASSWORD, "staff_id": staff_id}
+
+
+@pytest.fixture
+def api(session):
+    """A TestClient bound to the test transaction, with no session token yet."""
+    from fastapi.testclient import TestClient
+
+    from app.deps import db_session
+    from app.main import app
+
+    app.dependency_overrides[db_session] = lambda: session
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(api, staff_login):
+    """An authenticated TestClient.
+
+    Logs in through the real endpoint rather than forging a token, so every
+    test exercises the actual authentication path.
+    """
+    r = api.post(
+        "/auth/login",
+        json={"phone": staff_login["phone"], "password": staff_login["password"]},
+    )
+    assert r.status_code == 200, r.text
+    api.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    return api

@@ -18,8 +18,9 @@ app/db.py       Engine + session_scope(staff_id=...), which stamps app.staff_id
                 so the audit triggers can attribute the action
 app/matching/   The v1 matching engine. Pure functions, no DB access.
 app/operations/ Attendance, the reliability guarantee, follow-up scheduling
-app/routers/    Coordinator HTTP endpoints (no auth yet -- X-Staff-Id only
-                attributes the audit trail, it does not authenticate)
+app/auth.py     Passwords (argon2), DB-backed session tokens, lockout
+app/deps.py     db_session, current_staff, require_identity_access
+app/routers/    Coordinator HTTP endpoints -- all require a bearer session
 app/main.py     FastAPI admin app (coordinators and owner only)
 tests/          Filter behaviour and the residency guard
 scripts/        migrate.sh
@@ -237,6 +238,21 @@ Flipping a covered no-show to `replaced` would drop it out of
 `v_guarantee_invocations` and quietly inflate the reliability numbers -- the
 one metric the whole thesis rests on. The chain is the evidence; the status is
 the truth.
+
+### Auth invariants -- do not relax these
+
+- **Tokens stay stateful.** Swapping the `staff_sessions` table for JWTs would
+  remove revocation, and revocation is the point: deactivating a coordinator
+  must cut their access on the next request, not at token expiry.
+- **Only the token hash is stored.** Never persist the plaintext.
+- **Every login failure returns the same 401 body.** Distinguishing "no such
+  account" from "wrong password" from "locked" hands over a staff-enumeration
+  oracle.
+- **`can_view_identity` is a per-account grant, never a role check.** Seniority
+  does not imply entitlement to national ID numbers.
+- **Never grant `app_operations` direct `SELECT` on `candidate_identity`.** It
+  would bypass `read_candidate_identity()` and silently end the read trail. A
+  test asserts the privilege is absent.
 
 ### Metric views (migration 009)
 

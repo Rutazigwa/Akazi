@@ -7,8 +7,6 @@ failure here is a business failure, not a unit-test failure.
 from datetime import date, time
 from uuid import uuid4
 
-import pytest
-
 from app.matching.engine import (
     AvailabilityWindow,
     Candidate,
@@ -18,7 +16,6 @@ from app.matching.engine import (
 
 MONDAY = date(2026, 9, 7)  # a Monday
 EMPLOYER = uuid4()
-
 
 def make_request(**overrides) -> WorkRequest:
     base = dict(
@@ -33,7 +30,6 @@ def make_request(**overrides) -> WorkRequest:
     )
     base.update(overrides)
     return WorkRequest(**base)
-
 
 def make_candidate(**overrides) -> Candidate:
     base = dict(
@@ -52,12 +48,10 @@ def make_candidate(**overrides) -> Candidate:
     base.update(overrides)
     return Candidate(**base)
 
-
 def only_rejection(result):
     assert not result.matches
     assert len(result.rejections) == 1
     return result.rejections[0]
-
 
 # --- Filter 1: hard exclusions -------------------------------------------
 
@@ -67,7 +61,6 @@ def test_under_16_is_excluded():
     assert rejection.filter_name == "hard_exclusion"
     assert "minimum working age" in rejection.reason
 
-
 def test_age_is_measured_on_the_start_date_not_today():
     """Someone who turns 16 the day before the shift is eligible."""
     turns_16_just_in_time = make_candidate(
@@ -76,12 +69,10 @@ def test_age_is_measured_on_the_start_date_not_today():
     result = match_candidates(make_request(), [turns_16_just_in_time])
     assert len(result.matches) == 1
 
-
 def test_missing_consent_is_excluded():
     no_consent = make_candidate(has_placement_consent=False)
     rejection = only_rejection(match_candidates(make_request(), [no_consent]))
     assert "consent" in rejection.reason
-
 
 def test_availability_must_cover_the_whole_shift():
     partial = make_candidate(
@@ -90,7 +81,6 @@ def test_availability_must_cover_the_whole_shift():
     rejection = only_rejection(match_candidates(make_request(), [partial]))
     assert "availability does not cover" in rejection.reason
 
-
 def test_availability_on_the_wrong_day_is_excluded():
     wrong_day = make_candidate(
         availability=[AvailabilityWindow(2, time(6, 0), time(20, 0))]
@@ -98,20 +88,17 @@ def test_availability_on_the_wrong_day_is_excluded():
     rejection = only_rejection(match_candidates(make_request(), [wrong_day]))
     assert rejection.filter_name == "hard_exclusion"
 
-
 def test_skill_below_min_score_is_excluded():
     request = make_request(required_skills={"retail_greeting": 4})
     weak = make_candidate(skill_scores={"retail_greeting": 2})
     rejection = only_rejection(match_candidates(request, [weak]))
     assert "below the required 4" in rejection.reason
 
-
 def test_unassessed_required_skill_is_excluded():
     request = make_request(required_skills={"food_safety": 3})
     unassessed = make_candidate(skill_scores={})
     rejection = only_rejection(match_candidates(request, [unassessed]))
     assert "no assessment on record" in rejection.reason
-
 
 # --- Filter 2: transport viability ---------------------------------------
 
@@ -126,12 +113,10 @@ def test_the_blueprint_example_is_rejected():
     assert rejection.filter_name == "transport_viability"
     assert "53% of daily pay" in rejection.reason
 
-
 def test_transport_over_the_candidate_ceiling_is_rejected():
     candidate = make_candidate(est_transport_rwf=2500, max_commute_rwf=2000)
     rejection = only_rejection(match_candidates(make_request(), [candidate]))
     assert "exceeds the candidate's ceiling" in rejection.reason
-
 
 def test_employer_covered_transport_waives_the_whole_filter():
     request = make_request(pay_rwf=3000, transport_covered=True)
@@ -140,19 +125,16 @@ def test_employer_covered_transport_waives_the_whole_filter():
     assert len(result.matches) == 1
     assert "employer covers transport" in result.matches[0].reason
 
-
 def test_transport_exactly_at_the_limit_is_rejected():
     """30% is the limit, not the last acceptable value."""
     request = make_request(pay_rwf=1000)
     candidate = make_candidate(est_transport_rwf=300, max_commute_rwf=1000)
     assert only_rejection(match_candidates(request, [candidate]))
 
-
 def test_commute_time_ceiling_is_enforced():
     candidate = make_candidate(est_commute_min=120, max_commute_min=90)
     rejection = only_rejection(match_candidates(make_request(), [candidate]))
     assert "exceeds the candidate's ceiling of 90 min" in rejection.reason
-
 
 def test_monthly_pay_is_normalised_to_a_daily_rate():
     """RWF 66,000/month is RWF 3,000/day, so the same fare is still too high."""
@@ -161,7 +143,6 @@ def test_monthly_pay_is_normalised_to_a_daily_rate():
     rejection = only_rejection(match_candidates(request, [candidate]))
     assert rejection.filter_name == "transport_viability"
 
-
 def test_task_rate_work_skips_the_share_test_but_keeps_the_ceiling():
     request = make_request(pay_rwf=500, pay_unit="task")
     ok = make_candidate(est_transport_rwf=1500, max_commute_rwf=2000)
@@ -169,7 +150,6 @@ def test_task_rate_work_skips_the_share_test_but_keeps_the_ceiling():
 
     over = make_candidate(est_transport_rwf=2500, max_commute_rwf=2000)
     assert only_rejection(match_candidates(request, [over]))
-
 
 # --- Filter 3: safety ------------------------------------------------------
 
@@ -183,7 +163,6 @@ def test_after_dark_shift_needs_transport_or_opt_in_for_women():
     assert rejection.filter_name == "safety"
     assert "after dark" in rejection.reason
 
-
 def test_after_dark_opt_in_is_honoured():
     request = make_request(shift_start=time(12, 0), shift_end=time(21, 0))
     woman = make_candidate(
@@ -192,7 +171,6 @@ def test_after_dark_opt_in_is_honoured():
         availability=[AvailabilityWindow(0, time(6, 0), time(23, 0))],
     )
     assert len(match_candidates(request, [woman]).matches) == 1
-
 
 def test_after_dark_employer_transport_is_honoured():
     request = make_request(
@@ -204,11 +182,9 @@ def test_after_dark_employer_transport_is_honoured():
     )
     assert len(match_candidates(request, [woman]).matches) == 1
 
-
 def test_daytime_shift_is_unaffected_by_the_safety_filter():
     woman = make_candidate(gender="F")
     assert len(match_candidates(make_request(), [woman]).matches) == 1
-
 
 # --- Filter 4: ranking -----------------------------------------------------
 
@@ -227,7 +203,6 @@ def test_prior_placements_with_this_employer_outrank_a_better_score():
         "Talented",
     ]
 
-
 def test_retention_breaks_ties_before_assessment_score():
     sticky = make_candidate(
         display_name="Sticky", retention_30day_rate=0.9, assessment_score=3
@@ -238,13 +213,11 @@ def test_retention_breaks_ties_before_assessment_score():
     result = match_candidates(make_request(), [scorer, sticky])
     assert result.matches[0].candidate.display_name == "Sticky"
 
-
 def test_commute_time_is_the_final_tiebreak():
     near = make_candidate(display_name="Near", est_commute_min=10)
     far = make_candidate(display_name="Far", est_commute_min=50)
     result = match_candidates(make_request(), [far, near])
     assert result.matches[0].candidate.display_name == "Near"
-
 
 # --- Filter 5: explainability ---------------------------------------------
 
@@ -261,7 +234,6 @@ def test_every_match_carries_a_defensible_reason():
     assert "12-min commute" in reason
     assert "net RWF 4500/day after transport" in reason
 
-
 def test_rejections_are_returned_as_a_demand_signal():
     """A request that fills nobody must say why, per candidate."""
     request = make_request(pay_rwf=3000)
@@ -277,7 +249,6 @@ def test_rejections_are_returned_as_a_demand_signal():
         "hard_exclusion",
     }
     assert all(r.reason for r in result.rejections)
-
 
 def test_filters_short_circuit_in_order():
     """A candidate failing several filters is reported against the first."""

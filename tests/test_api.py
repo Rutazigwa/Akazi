@@ -9,24 +9,9 @@ from __future__ import annotations
 import os
 from datetime import date
 
-import pytest
-from fastapi.testclient import TestClient
-
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
 TODAY = date.today()
-
-
-@pytest.fixture
-def client(session, staff_id):
-    from app.main import app
-    from app.routers.operations import get_session
-
-    app.dependency_overrides[get_session] = lambda: session
-    with TestClient(app) as c:
-        c.headers["X-Staff-Id"] = str(staff_id)
-        yield c
-    app.dependency_overrides.clear()
 
 
 def test_no_show_to_covered_shift(client, session, make_placement, make_candidate):

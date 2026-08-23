@@ -19,7 +19,7 @@ docker compose up -d db                 # Postgres 16
 
 python -m venv .venv && .venv/bin/pip install -e '.[dev]'
 cp .env.example .env                    # set DATA_RESIDENCY
-.venv/bin/python -m pytest              # 59 tests
+.venv/bin/python -m pytest              # 80 tests
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -34,9 +34,11 @@ app/config.py   Settings + the residency guard
 app/db.py       Engine, session scope, audit attribution
 app/matching/   The v1 matching engine (sequential filters)
 app/operations/ Attendance, the guarantee, follow-up scheduling
+app/auth.py     Passwords, sessions, lockout
+app/deps.py     Session + authenticated-staff dependencies
 app/routers/    Coordinator HTTP endpoints
 tests/          Filters, residency guard, and DB-backed operations tests
-scripts/        migrate.sh, testdb.sh
+scripts/        migrate.sh, testdb.sh, create_staff.py
 ```
 
 ## Data residency
@@ -100,6 +102,50 @@ a test named for it.
 nobody is a demand signal, and the reason tells you whether the problem is pay,
 transport, skills or supply.
 
+## Authentication
+
+There is no self-registration — this is an internal admin system. Create the
+first account from the command line:
+
+```bash
+python scripts/create_staff.py --name "Owner" --phone +250780000001 \
+    --role owner --identity-access
+```
+
+The password is read from the terminal or `STAFF_PASSWORD`, never from an
+argument (shell history, process list). Then:
+
+```bash
+curl -X POST localhost:8000/auth/login \
+  -d '{"phone":"+250780000001","password":"..."}' -H 'Content-Type: application/json'
+# -> {"token": "...", ...}   then send: Authorization: Bearer <token>
+```
+
+**Tokens are opaque and stored in the database, not JWTs.** The deciding factor
+is revocation. This system holds national ID numbers; when a coordinator leaves,
+their access has to stop when someone says so — not whenever a signed token
+happens to expire. Deactivating a staff member invalidates their live sessions on
+the very next request. Only the SHA-256 of a token is stored, so a leaked backup
+yields no usable session.
+
+Five failed logins lock an account for 15 minutes. Every failure path — unknown
+account, wrong password, locked, deactivated — returns the same 401 with the same
+body, so there is no way to enumerate staff.
+
+### Identity access is a separate grant
+
+`staff.can_view_identity` gates `/candidates/{id}/identity`, and it is **not**
+implied by role. An owner is not automatically entitled to read national ID
+numbers; somebody grants it deliberately.
+
+Reads go through `read_candidate_identity()`, so every one lands in `audit_log`
+attributed to a named person. `GET /candidates/{id}/access-log` is the answer to
+"who looked at this record" — for the NCSA, and for the candidate, who is
+entitled to ask.
+
+A refused read logs nothing: the gate runs before the function that logs, so a
+403 is not recorded as a read. There's a test for that.
+
 ## The guarantee
 
 A no-show is recorded like any other absence, but `log_attendance` returns a
@@ -144,8 +190,6 @@ matching and config tests still run anywhere.
   is measurable. Moving money is phase 2.
 - **No ML matching.** See above.
 - **No candidate or employer UI.** Weeks 7–12 and month 4+ respectively.
-- **No authentication.** `X-Staff-Id` stamps the audit trail; it does not prove
-  anything. Do not expose this beyond a trusted network until real auth exists.
 - **Apprenticeship exceptions for ages 13–15.** The age constraint is a hard 16;
   exceptions need an authorised-exception record and a deliberate schema change.
 

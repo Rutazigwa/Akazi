@@ -1,23 +1,20 @@
 """Coordinator-facing operations endpoints.
 
-Internal admin only -- coordinators and the owner. There is no authentication
-here yet, so this must not be exposed beyond localhost or a trusted network
-until it exists. The X-Staff-Id header is an attribution mechanism, not an
-authentication one: it stamps the audit trail, and it is trivially forgeable.
+Internal admin only -- coordinators and the owner. Every route requires a valid
+bearer session; the acting staff member is resolved from it and stamped on the
+transaction so the audit triggers can attribute the work.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 
-from app.db import session_scope
+from app.deps import SessionDep, StaffDep
 from app.operations.attendance import (
     AttendanceError,
     log_attendance,
@@ -28,16 +25,6 @@ from app.operations.attendance import (
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
 
 router = APIRouter(tags=["operations"])
-
-StaffId = Annotated[UUID, Header(alias="X-Staff-Id")]
-
-
-def get_session(staff_id: StaffId):
-    with session_scope(staff_id=staff_id) as session:
-        yield session
-
-
-SessionDep = Annotated[Session, Depends(get_session)]
 
 
 class StartPlacement(BaseModel):
@@ -69,7 +56,7 @@ class CompleteFollowUp(BaseModel):
 
 
 @router.post("/placements/{placement_id}/start")
-def start(placement_id: UUID, body: StartPlacement, session: SessionDep):
+def start(placement_id: UUID, body: StartPlacement, session: SessionDep, staff: StaffDep):
     try:
         schedule = start_placement(session, placement_id, body.started_on)
     except AttendanceError as exc:
@@ -78,7 +65,7 @@ def start(placement_id: UUID, body: StartPlacement, session: SessionDep):
 
 
 @router.post("/placements/{placement_id}/attendance")
-def attendance(placement_id: UUID, body: LogAttendance, session: SessionDep):
+def attendance(placement_id: UUID, body: LogAttendance, session: SessionDep, staff: StaffDep):
     try:
         invocation = log_attendance(
             session,
@@ -107,7 +94,7 @@ def attendance(placement_id: UUID, body: LogAttendance, session: SessionDep):
 
 
 @router.post("/placements/{placement_id}/replacement", status_code=201)
-def replacement(placement_id: UUID, body: RecordReplacement, session: SessionDep):
+def replacement(placement_id: UUID, body: RecordReplacement, session: SessionDep, staff: StaffDep):
     try:
         new_id = record_replacement(
             session,
@@ -124,17 +111,18 @@ def replacement(placement_id: UUID, body: RecordReplacement, session: SessionDep
 
 
 @router.get("/guarantees/open")
-def guarantees(session: SessionDep):
+def guarantees(session: SessionDep, staff: StaffDep):
     return {"open": open_guarantees(session)}
 
 
 @router.get("/follow-ups/due")
-def follow_ups(session: SessionDep, as_of: date | None = None):
+def follow_ups(session: SessionDep, staff: StaffDep,
+               as_of: date | None = None):
     return {"due": due_follow_ups(session, as_of or date.today())}
 
 
 @router.post("/follow-ups/{follow_up_id}/complete")
-def complete(follow_up_id: UUID, body: CompleteFollowUp, session: SessionDep):
+def complete(follow_up_id: UUID, body: CompleteFollowUp, session: SessionDep, staff: StaffDep):
     complete_follow_up(
         session,
         follow_up_id,
@@ -148,6 +136,6 @@ def complete(follow_up_id: UUID, body: CompleteFollowUp, session: SessionDep):
 
 
 @router.get("/metrics/scorecard")
-def scorecard(session: SessionDep):
+def scorecard(session: SessionDep, staff: StaffDep):
     row = session.execute(text("SELECT * FROM v_pilot_scorecard")).mappings().one()
     return dict(row)
