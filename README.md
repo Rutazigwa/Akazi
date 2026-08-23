@@ -19,7 +19,7 @@ docker compose up -d db                 # Postgres 16
 
 python -m venv .venv && .venv/bin/pip install -e '.[dev]'
 cp .env.example .env                    # set DATA_RESIDENCY
-.venv/bin/python -m pytest              # 29 tests
+.venv/bin/python -m pytest              # 59 tests
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -33,8 +33,10 @@ migrations/     Numbered SQL, applied in order. Blocks match the blueprint.
 app/config.py   Settings + the residency guard
 app/db.py       Engine, session scope, audit attribution
 app/matching/   The v1 matching engine (sequential filters)
-tests/          Filter behaviour and the residency guard
-scripts/        migrate.sh
+app/operations/ Attendance, the guarantee, follow-up scheduling
+app/routers/    Coordinator HTTP endpoints
+tests/          Filters, residency guard, and DB-backed operations tests
+scripts/        migrate.sh, testdb.sh
 ```
 
 ## Data residency
@@ -98,12 +100,52 @@ a test named for it.
 nobody is a demand signal, and the reason tells you whether the problem is pay,
 transport, skills or supply.
 
+## The guarantee
+
+A no-show is recorded like any other absence, but `log_attendance` returns a
+`GuaranteeInvocation` when it is the worker's *first* scheduled day — that is the
+case where the employer got nothing. A later absence on a placement that already
+ran is an absence, not a no-show: the shift was covered and the employer got what
+they bought.
+
+An invocation starts a 24-hour clock. `GET /guarantees/open` is the coordinator's
+queue, ordered oldest first, with a `breached` flag once the window passes.
+
+**The failed placement stays `no_show` forever.** Coverage is recorded by a new
+placement row whose `replaces_placement` points back at it — never by editing the
+original. Flipping it to `replaced` would remove the invocation from
+`v_guarantee_invocations` and silently improve the reliability numbers. There is a
+test named for that.
+
+## Metrics
+
+`v_pilot_scorecard` is one row carrying every headline target from the blueprint —
+active employers, time to fill, 30-day retention, average transport share,
+guarantee fill rate, women placed, pay accuracy. Everything derives from the
+operational rows; no metric can be set independently of the events it describes.
+
+Two deliberate definitions:
+
+- **Retention** counts only *answered* day-30 check-ins. An unanswered one is
+  missing data, not a failure, and must not drag the number down.
+- **Pay accuracy** requires in full *and* on the agreed date. Late-but-complete is
+  still a broken promise to someone living on the wage.
+
+## Running the tests
+
+The operations and metrics tests run against a real PostgreSQL instance, because
+most of what they protect is enforced by the database. Point `TEST_DATABASE_URL`
+at a throwaway server, or run `scripts/testdb.sh`. Without one they skip; the
+matching and config tests still run anywhere.
+
 ## What is not here, on purpose
 
 - **No payments.** `pay_records` records terms, amounts and dates so pay accuracy
   is measurable. Moving money is phase 2.
 - **No ML matching.** See above.
 - **No candidate or employer UI.** Weeks 7–12 and month 4+ respectively.
+- **No authentication.** `X-Staff-Id` stamps the audit trail; it does not prove
+  anything. Do not expose this beyond a trusted network until real auth exists.
 - **Apprenticeship exceptions for ages 13–15.** The age constraint is a hard 16;
   exceptions need an authorised-exception record and a deliberate schema change.
 

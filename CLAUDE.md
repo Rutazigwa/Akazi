@@ -17,6 +17,9 @@ app/config.py   Settings + the residency guard (Settings refuses to construct
 app/db.py       Engine + session_scope(staff_id=...), which stamps app.staff_id
                 so the audit triggers can attribute the action
 app/matching/   The v1 matching engine. Pure functions, no DB access.
+app/operations/ Attendance, the reliability guarantee, follow-up scheduling
+app/routers/    Coordinator HTTP endpoints (no auth yet -- X-Staff-Id only
+                attributes the audit trail, it does not authenticate)
 app/main.py     FastAPI admin app (coordinators and owner only)
 tests/          Filter behaviour and the residency guard
 scripts/        migrate.sh
@@ -220,6 +223,27 @@ It silently removes the evidence trail without breaking a single test.
 Attribution comes from the transaction-local `app.staff_id` setting, so identity
 work must go through `session_scope(staff_id=...)`. An audit row with a null
 `staff_id` proves nothing.
+
+### no_show vs replaced -- do not conflate these
+
+`no_show` means the worker did not arrive. It stays on the placement
+permanently. Coverage is recorded as a *separate* placement row pointing back
+via `replaces_placement`.
+
+`replaced` is for a placement that ended early and was substituted for some
+other reason.
+
+Flipping a covered no-show to `replaced` would drop it out of
+`v_guarantee_invocations` and quietly inflate the reliability numbers -- the
+one metric the whole thesis rests on. The chain is the evidence; the status is
+the truth.
+
+### Metric views (migration 009)
+
+Every pilot target in §7 is a view, derived from operational rows rather than
+stored. `v_pilot_scorecard` is the one-row summary. When adding a metric,
+derive it -- a number that can be set independently of the events it describes
+will eventually disagree with them.
 
 ### Enum types
 
