@@ -3,8 +3,67 @@
 {% block body %}
 <h1>Today</h1>
 
-{# Open guarantees come first and nothing competes with them. A no-show with a
-   running clock is the only thing on this screen with a deadline. #}
+{# Escalations sit above everything, including the guarantee. A covered shift
+   is money; a harassment report is a person who may still be at the site. #}
+{% if escalations %}
+<div class="card urgent">
+  <h2 style="margin-top:0">Needs a response now — {{ escalations|length }}</h2>
+  <table>
+    <tr><th>Kind</th><th>Who</th><th>Where</th><th>Owner</th><th>Respond by</th><th></th></tr>
+    {% for e in escalations %}
+    <tr>
+      <td>
+        <span class="pill {{ 'bad' if e.kind in ('harassment','safety') else 'warn' }}">{{ e.kind }}</span>
+        {% if e.status == 'acknowledged' %}<br><span class="small muted">picked up</span>{% endif %}
+      </td>
+      <td>{{ e.display_name or '—' }}</td>
+      <td class="small muted">{{ e.business_name or '—' }}</td>
+      <td class="small muted">{{ e.owner_name }}</td>
+      <td>
+        {% if e.overdue %}<span class="pill bad">overdue</span>
+        {% else %}<span class="pill warn">{{ e.respond_by.strftime('%d %b %H:%M') }}</span>{% endif %}
+      </td>
+      <td>
+        {% if e.status == 'open' %}
+        <form class="inline" method="post" action="/ui/escalations/{{ e.escalation_id }}/acknowledge">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <button>I have this</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if escalations|selectattr('detail')|list %}
+  <p class="small muted" style="margin-bottom:0">
+    Reported: {% for e in escalations if e.detail %}“{{ e.detail }}”{% if not loop.last %} · {% endif %}{% endfor %}
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if unread_replies %}
+<div class="card">
+  <h2 style="margin-top:0">Replies we could not read ({{ unread_replies|length }})</h2>
+  <table>
+    <tr><th>From</th><th>Message</th><th>Received</th></tr>
+    {% for m in unread_replies %}
+    <tr>
+      <td>{{ m.display_name or m.from_phone }}</td>
+      <td>{{ m.body }}</td>
+      <td class="small muted">{{ m.received_at.strftime('%d %b %H:%M') }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted" style="margin-bottom:0">
+    Guessing at these would cancel someone's work or miss a report, so they
+    wait for a person.
+  </p>
+</div>
+{% endif %}
+
+{# Open guarantees come next. A no-show with a running clock is the only other
+   thing on this screen with a deadline. #}
 {% if guarantees %}
 <div class="card urgent">
   <h2 style="margin-top:0">Guarantee clock running — {{ guarantees|length }}</h2>

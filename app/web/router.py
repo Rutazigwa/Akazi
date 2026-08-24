@@ -25,6 +25,7 @@ from sqlalchemy import text
 from app.auth import AuthError, login, logout
 from app.deps import SessionDep
 from app.matching.repository import find_matches
+from app.messaging.inbound import needs_attention
 from app.mfa import MFAError, elevate_session
 from app.operations.attendance import (
     AttendanceError,
@@ -32,6 +33,11 @@ from app.operations.attendance import (
     open_guarantees,
     record_replacement,
     start_placement,
+)
+from app.operations.escalations import (
+    EscalationError,
+    acknowledge,
+    open_escalations,
 )
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
 from app.operations.registry import (
@@ -185,6 +191,8 @@ def dashboard(request: Request, session: SessionDep, staff: WebStaffDep):
     return _render(
         request, "dashboard.html", staff,
         nav="dashboard",
+        escalations=open_escalations(session),
+        unread_replies=needs_attention(session),
         guarantees=open_guarantees(session),
         follow_ups=due_follow_ups(session, date.today()),
         requests=open_requests(session),
@@ -193,6 +201,17 @@ def dashboard(request: Request, session: SessionDep, staff: WebStaffDep):
         ],
         **_flash(request),
     )
+
+
+@router.post("/escalations/{escalation_id}/acknowledge")
+def acknowledge_escalation(
+    escalation_id: UUID, session: SessionDep, staff: CsrfStaffDep
+):
+    try:
+        acknowledge(session, escalation_id, staff.staff_id)
+    except EscalationError as exc:
+        return _back("/ui/", str(exc), "err")
+    return _back("/ui/", "Picked up — the response clock has stopped")
 
 
 # --- employers -------------------------------------------------------------

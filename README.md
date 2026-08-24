@@ -397,6 +397,68 @@ a real person. A live WhatsApp Business provider is deliberately not written: th
 API shape depends on which BSP you sign with, and guessing produces code that
 looks finished and has never run. It needs to satisfy one protocol method.
 
+## Replies, and the escalation path
+
+The outbound templates ask people to reply. Until this existed nothing read
+those replies — which is worse than not asking, because it teaches a worker the
+channel is decorative, and the one time it matters they won't use it.
+
+`POST /webhooks/inbound` takes the provider callback (shared secret, constant-time
+compare). Replies are interpreted conservatively:
+
+| Reply | Result |
+|---|---|
+| `YES` / `yego` / `sawa` / `ok` | accepts an outstanding offer |
+| `NO` / `oya` | declines it |
+| `STOP` / `hagarika` | withdraws consent, cancels queued messages |
+| "he keeps touching me" | **harassment escalation** |
+| "I have not been paid" | pay escalation |
+| "no problem" | affirmative — *not* a refusal |
+| anything else | queued for a human, never guessed |
+
+Two of those are load-bearing. **"No problem" must not read as a decline** —
+that would cancel someone's work. And an issue **beats** a yes: "yes but he
+shouted at me" is a report, not a confirmation.
+
+Reported problems are matched by pattern rather than literal phrase, because
+tense and phrasing vary: "touched me", "keeps touching me" and "he touches me"
+are one report written three ways. Matching is deliberately broad — a false
+positive costs a coordinator two minutes; a false negative costs someone a
+response to being assaulted.
+
+### The named path and the defined response time
+
+The blueprint asks for a harassment report with a named escalation path and a
+defined response time. Both halves are enforced:
+
+| Kind | Acknowledge within |
+|---|---|
+| harassment | 2 hours |
+| safety | 4 hours |
+| pay | 24 hours |
+| transport / hours | 48 hours |
+
+An escalation records **an owner** — a person, captured when it was raised, so
+"who was supposed to deal with this" has an answer months later even if the rota
+changed. Harassment goes to the owner of the business rather than whoever is on
+shift: it is the one report where the recipient may need to end a commercial
+relationship, and a coordinator can't be asked to make that call about an
+employer they manage daily.
+
+Raising an escalation with **nobody to own it fails loudly**. An unowned
+escalation looks like a safeguard and isn't one.
+
+Resolving requires saying what was done — "resolved" with no account is
+indistinguishable from ignoring it. `GET /escalations/performance` reports
+whether we met our own response times, because a process nobody measures decays
+into a form.
+
+A `harassment` or `safety` flag recorded during a follow-up **call** escalates
+identically. The safeguard must not depend on how someone happened to tell us.
+
+On the coordinator dashboard, escalations sit **above** the guarantee. A covered
+shift is money; a harassment report is a person who may still be at the site.
+
 ## The guarantee
 
 A no-show is recorded like any other absence, but `log_attendance` returns a

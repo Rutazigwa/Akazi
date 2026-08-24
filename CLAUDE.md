@@ -307,6 +307,31 @@ permission error by connecting as the owner: an app connected as owner can
 disable the audit-log rules, which is the tampering the hash chain exists to
 detect.
 
+### Escalations -- the safeguard, not a reporting line
+
+- **An escalation has a named owner and a deadline, both recorded at the time.**
+  Raising one with nobody to own it must fail loudly, not succeed quietly.
+- **Harassment is owned by the owner role**, not a coordinator: the recipient
+  may need to end a commercial relationship with an employer a coordinator
+  manages daily.
+- **A flag raised on a call escalates exactly like a texted one.** The
+  safeguard must not depend on how someone happened to tell us.
+- **Resolution text is required.** "Resolved" with no account of what was done
+  is indistinguishable from ignoring it, and this is the record someone may
+  have to defend.
+- **Do not shorten RESPONSE_TIMES casually.** A target quietly missed is worse
+  than a longer one that is met.
+
+### Reading replies
+
+- **Never guess.** An uninterpretable reply queues for a human. Acting on a
+  misread reply cancels someone's work or ignores a report of harassment.
+- **"No problem" is not a refusal**, and an issue beats a yes/no.
+- **Issue matching is pattern-based and deliberately broad.** A false positive
+  costs two minutes; a false negative costs someone a response to being
+  assaulted. A live run once caught "keeps touching me" slipping past a literal
+  phrase match -- add variants, never narrow them.
+
 ### Messaging invariants
 
 - **Queue inside the causing transaction; send separately.** Never send inline:

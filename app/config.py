@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     # Turn it off only for local development against throwaway data.
     require_mfa_for_identity: bool = True
 
+    # Shared secret for the messaging provider's inbound webhook. Unset means
+    # the endpoint returns 503 rather than accepting unauthenticated posts.
+    inbound_webhook_secret: str | None = None
+
     @model_validator(mode="after")
     def _check_residency(self) -> "Settings":
         host = (urlparse(self.database_url).hostname or "").lower()

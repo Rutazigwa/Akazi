@@ -14,6 +14,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.operations.escalations import ALWAYS_ESCALATE
+
 # Days after the start date at which each check-in falls due.
 CHECKPOINT_OFFSETS: dict[str, int] = {
     "day_1": 1,
@@ -105,6 +107,11 @@ def complete_follow_up(
     named escalation path, and it is deliberately a constrained value rather
     than free text so that it can be counted and responded to.
     """
+    placement_id = session.execute(
+        text("SELECT placement_id FROM follow_ups WHERE follow_up_id = :fid"),
+        {"fid": str(follow_up_id)},
+    ).scalar_one_or_none()
+
     session.execute(
         text(
             """
@@ -127,3 +134,30 @@ def complete_follow_up(
             "notes": notes,
         },
     )
+
+    # A flag raised on a call is the same report as one sent by text. Routing
+    # only the texted ones would mean the safeguard depends on how someone
+    # happened to tell us.
+    if issue_flag in ALWAYS_ESCALATE and placement_id is not None:
+        from app.operations.escalations import (
+            EscalationError,
+            raise_escalation,
+        )
+
+        candidate_id = session.execute(
+            text("SELECT candidate_id FROM placements WHERE placement_id = :pid"),
+            {"pid": str(placement_id)},
+        ).scalar_one()
+        try:
+            raise_escalation(
+                session,
+                issue_flag,
+                candidate_id=candidate_id,
+                placement_id=placement_id,
+                follow_up_id=follow_up_id,
+                detail=notes,
+            )
+        except EscalationError:
+            # Re-raised: a harassment report that silently fails to escalate
+            # is the worst outcome in this system.
+            raise
