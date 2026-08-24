@@ -1,0 +1,88 @@
+{% extends "employer/base.html" %}
+{% block title %}Your shifts · Akazi{% endblock %}
+{% block body %}
+<h1>{{ employer.business_name }}</h1>
+
+{# The guarantee is what they are paying for, so it is reported to them rather
+   than only tracked internally. An operator who keeps this to themselves is
+   asking to be taken on trust. #}
+<div class="card">
+  <h2 style="margin-top:0">What we promised you</h2>
+  <div class="stats">
+    <div>
+      <div class="stat">{{ summary.shifts_covered }}</div>
+      <div class="small muted">Shifts covered</div>
+    </div>
+    <div>
+      <div class="stat">{{ summary.no_shows }}</div>
+      <div class="small muted">No-shows</div>
+    </div>
+    <div>
+      <div class="stat">{{ summary.covered_within_24h }}</div>
+      <div class="small muted">Replaced within 24h</div>
+    </div>
+    <div>
+      <div class="stat">{{ summary.avg_days_to_fill if summary.avg_days_to_fill is not none else '—' }}</div>
+      <div class="small muted">Avg days to fill</div>
+    </div>
+  </div>
+  {% if summary.no_shows and summary.no_shows == summary.covered_within_24h %}
+  <p class="small"><span class="pill good">Every no-show was covered inside 24 hours</span></p>
+  {% elif summary.no_shows %}
+  <p class="small"><span class="pill warn">
+    {{ summary.no_shows - summary.covered_within_24h }} no-show(s) not covered inside 24 hours
+  </span></p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Workers assigned</h2>
+  {% if workers %}
+  <table>
+    <tr><th>Worker</th><th>Shift</th><th>Date</th><th>Status</th><th class="num">Days worked</th><th></th></tr>
+    {% for w in workers %}
+    <tr>
+      <td>
+        {{ w.display_name }}
+        {% if w.is_replacement %}<br><span class="pill good">cover</span>{% endif %}
+      </td>
+      <td>{{ w.title }}
+        {% if w.shift_start %}<br><span class="small muted">{{ w.shift_start.strftime('%H:%M') }}–{{ w.shift_end.strftime('%H:%M') }}</span>{% endif %}
+      </td>
+      <td class="small muted">{{ w.starts_on }}</td>
+      <td><span class="pill {{ 'good' if w.status in ('active','completed') else ('bad' if w.status == 'no_show' else 'warn') }}">{{ w.status }}</span></td>
+      <td class="num">{{ w.days_present }}</td>
+      <td><a href="/employer/workers/{{ w.placement_id }}">Open</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted small">Nobody assigned yet. <a href="/employer/post">Post a shift</a>.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Your requests</h2>
+  {% if requests %}
+  <table>
+    <tr><th>Role</th><th>Date</th><th class="num">Pay</th><th class="num">Assigned</th><th>Status</th><th></th></tr>
+    {% for r in requests %}
+    <tr>
+      <td>{{ r.title }}</td>
+      <td class="small muted">{{ r.starts_on }}</td>
+      <td class="num">{{ '{:,}'.format(r.pay_rwf) }}/{{ r.pay_unit }}</td>
+      <td class="num">{{ r.assigned }}/{{ r.headcount }}</td>
+      <td><span class="pill {{ 'good' if r.status == 'filled' else 'warn' }}">{{ r.status }}</span></td>
+      <td>
+        <form class="inline" method="post" action="/employer/requests/{{ r.request_id }}/reorder">
+          <input type="hidden" name="csrf_token" value="{{ employer.csrf_token }}">
+          <input type="date" name="starts_on" value="{{ today }}" style="width:auto">
+          <button class="secondary">Order again</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted small">No requests yet.</p>{% endif %}
+</div>
+{% endblock %}

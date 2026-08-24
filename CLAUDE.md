@@ -27,9 +27,11 @@ app/auth.py     Passwords (argon2), DB-backed session tokens, lockout
 app/mfa.py      TOTP: enrolment, per-session elevation, replay guard
 app/deps.py     db_session, current_staff, require_identity_access
 app/routers/    JSON API -- all require a bearer session
-app/web/        Admin UI: Jinja templates, cookie session, CSRF. No build
-                step and no JS framework -- keep it that way unless the
-                blueprint's "do not over-engineer" stops being true.
+app/web/        Admin UI (/ui) and employer dashboard (/employer). Jinja,
+                cookie sessions, CSRF. No build step and no JS framework --
+                keep it that way unless "do not over-engineer" stops being true.
+app/employer_auth.py, app/operations/employer_portal.py
+                The employer principal. Separate session table from staff.
 app/main.py     FastAPI admin app (coordinators and owner only)
 tests/          Filter behaviour and the residency guard
 scripts/        migrate.sh
@@ -283,6 +285,22 @@ a data-protection request is the opposite of compliance.
 
 `erase_candidate_identity()` refuses to run when `app.staff_id` is unset. It is
 the one operation whose actor cannot be reconstructed later.
+
+### Employer isolation -- the sharpest edge in the system
+
+- **Employers and staff are separate principals in separate tables.** Never
+  merge the session tables or add an "employer" staff role: two tables are what
+  makes it impossible for one token to resolve as the other by mistake.
+- **Every employer query filters on employer_id from the session.** Never from
+  a form, never from a URL. `post_request` takes it as an argument for exactly
+  this reason.
+- **Ownership is rechecked server-side on every action.** `_own_placement` and
+  `_own_request` exist so no handler has to remember.
+- **Refusals must not distinguish "not yours" from "does not exist".** Otherwise
+  the portal is an oracle for what other employers have.
+- **Never join candidate_identity in anything an employer can reach.** They get
+  display_name. An employer buying a covered shift does not need a national ID
+  to receive someone.
 
 ### Web UI invariants
 

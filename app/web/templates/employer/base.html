@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Akazi{% endblock %}</title>
+<style>
+  /* Responsive web only -- employers are on laptops and good phones, and the
+     blueprint rules out an employer app permanently. */
+  :root {
+    --ink:#16191d; --muted:#5c6570; --line:#dde1e6; --bg:#f7f8fa; --card:#fff;
+    --accent:#1f4e79; --good:#14603f; --good-bg:#e8f5ee;
+    --warn:#8a4b00; --warn-bg:#fff4e5; --bad:#8f1d1d; --bad-bg:#fdecec;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
+         color:var(--ink); background:var(--bg); }
+  header { background:var(--accent); color:#fff; padding:.7rem 1rem;
+           display:flex; gap:1.2rem; align-items:baseline; flex-wrap:wrap; }
+  header a { color:#cfe0ef; text-decoration:none; }
+  header a:hover, header a.on { color:#fff; text-decoration:underline; }
+  header .brand { font-weight:700; color:#fff; }
+  header .spacer { margin-left:auto; }
+  main { max-width:1000px; margin:0 auto; padding:1.25rem 1rem 4rem; }
+  h1 { font-size:1.35rem; margin:.2rem 0 1rem; }
+  h2 { font-size:1.05rem; margin:1.5rem 0 .6rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px;
+          padding:1rem; margin-bottom:1rem; }
+  table { width:100%; border-collapse:collapse; font-size:.93rem; }
+  th,td { text-align:left; padding:.5rem .6rem; border-bottom:1px solid var(--line);
+          vertical-align:top; }
+  th { font-size:.78rem; text-transform:uppercase; letter-spacing:.04em;
+       color:var(--muted); font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  a { color:var(--accent); }
+  label { display:block; font-size:.82rem; color:var(--muted); margin:.6rem 0 .15rem; }
+  input,select,textarea { font:inherit; padding:.4rem .5rem; border:1px solid var(--line);
+                 border-radius:5px; width:100%; background:#fff; color:var(--ink); }
+  .grid { display:grid; gap:.1rem 1rem; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); }
+  button { font:inherit; padding:.45rem .9rem; border-radius:5px; cursor:pointer;
+           border:1px solid var(--accent); background:var(--accent); color:#fff; }
+  button.secondary { background:#fff; color:var(--ink); border-color:var(--line); }
+  form.inline { display:inline; }
+  .pill { display:inline-block; padding:.1rem .5rem; border-radius:99px;
+          font-size:.75rem; font-weight:600; }
+  .pill.good{background:var(--good-bg);color:var(--good);}
+  .pill.warn{background:var(--warn-bg);color:var(--warn);}
+  .pill.bad{background:var(--bad-bg);color:var(--bad);}
+  .flash { padding:.6rem .8rem; border-radius:6px; margin-bottom:1rem; }
+  .flash.ok{background:var(--good-bg);color:var(--good);}
+  .flash.err{background:var(--bad-bg);color:var(--bad);}
+  .muted{color:var(--muted);} .small{font-size:.85rem;}
+  .stat{font-size:1.5rem;font-weight:650;font-variant-numeric:tabular-nums;}
+  .stats{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}
+</style>
+</head>
+<body>
+{% if employer %}
+<header>
+  <span class="brand">Akazi</span>
+  <a href="/employer/" class="{{ 'on' if nav=='home' }}">Shifts</a>
+  <a href="/employer/post" class="{{ 'on' if nav=='post' }}">Post a shift</a>
+  <span class="spacer"></span>
+  <span class="small" style="color:#cfe0ef">{{ employer.business_name }} · {{ employer.full_name }}</span>
+  <form class="inline" method="post" action="/employer/logout">
+    <input type="hidden" name="csrf_token" value="{{ employer.csrf_token }}">
+    <button class="secondary" style="padding:.2rem .6rem">Sign out</button>
+  </form>
+</header>
+{% endif %}
+<main>
+  {% if flash %}<div class="flash {{ flash_kind or 'ok' }}">{{ flash }}</div>{% endif %}
+  {% block body %}{% endblock %}
+</main>
+</body>
+</html>

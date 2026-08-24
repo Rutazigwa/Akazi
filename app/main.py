@@ -21,8 +21,10 @@ from app.routers import (
     requests,
     staff,
 )
+from app.web import employer_router
 from app.web import router as web_router
 from app.web.deps import LoginRequired, redirect_to_login
+from app.web.employer_deps import EmployerLoginRequired
 
 settings = get_settings()
 
@@ -34,6 +36,7 @@ app.include_router(registry.router)
 app.include_router(requests.router)
 app.include_router(staff.router)
 app.include_router(web_router.router)
+app.include_router(employer_router.router)
 app.include_router(operations.router)
 
 
@@ -41,6 +44,11 @@ app.include_router(operations.router)
 def _login_required(request: Request, exc: LoginRequired):
     """Send a browser to the sign-in page instead of a bare 401 body."""
     return redirect_to_login(request)
+
+
+@app.exception_handler(EmployerLoginRequired)
+def _employer_login_required(request: Request, exc: EmployerLoginRequired):
+    return RedirectResponse("/employer/login", status_code=303)
 
 
 @app.get("/")

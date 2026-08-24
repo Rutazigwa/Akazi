@@ -19,7 +19,7 @@ docker compose up -d db                 # Postgres 16
 
 python -m venv .venv && .venv/bin/pip install -e '.[dev]'
 cp .env.example .env                    # set DATA_RESIDENCY
-.venv/bin/python -m pytest              # 167 tests
+.venv/bin/python -m pytest              # 187 tests
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -39,7 +39,8 @@ app/auth.py     Passwords, sessions, lockout
 app/mfa.py      TOTP enrolment, session elevation, replay guard
 app/deps.py     Session + authenticated-staff dependencies
 app/routers/    JSON API endpoints
-app/web/        The admin UI — server-rendered templates, cookie session, CSRF
+app/web/        Admin UI and employer dashboard — templates, cookies, CSRF
+app/employer_auth.py    Employer principal: separate tables from staff
 tests/          Filters, residency guard, and DB-backed operations tests
 scripts/        migrate.sh, testdb.sh, create_staff.py, backup.sh
 deploy/         Production stack: Postgres + app + Caddy (automatic TLS)
@@ -153,6 +154,41 @@ The UI authenticates with a cookie rather than a bearer token, so CSRF applies t
 it in a way it does not to the JSON API. Two defences: `SameSite=Strict` on an
 `HttpOnly` cookie, and a per-session CSRF token on every state-changing form. The
 cookie is `Secure` in every deployment except local development.
+
+## The employer dashboard
+
+`/employer` — weeks 7–12 of the build order. An employer signs in, sees who is
+assigned, confirms attendance, rates the worker, and reorders in one click.
+Responsive web; there is no employer app and there is not going to be one.
+
+**Employer-confirmed attendance is the point.** Until now every attendance row
+was typed by a coordinator, which makes it *our* word — and the reliability
+guarantee is a claim we make to employers. When the employer presses the button
+themselves, and we record which contact did it, it becomes evidence. Confirming a
+no-show starts the 24-hour clock directly.
+
+The dashboard reports the guarantee **back to the employer**: shifts covered,
+no-shows, how many were replaced inside 24 hours. An operator who keeps that
+number to themselves is asking to be taken on trust.
+
+### Isolation
+
+Employers are a separate principal from staff, in separate tables. Neither
+token resolves in the other's lookup — there is no shared session table to get
+wrong.
+
+Every employer query filters on the `employer_id` from the session, never from a
+form or URL, and ownership is rechecked server-side on each action. A placement
+id in a URL proves nothing. Refusals use the same message whether the record
+belongs to someone else or does not exist, so the portal cannot be used to probe
+for what exists.
+
+**No candidate identity ever reaches an employer.** `assigned_workers` does not
+join `candidate_identity` at all — employers get `display_name` and the
+operational facts about the shift they bought. There is a test asserting no
+legal name, phone number or date of birth appears in what the portal returns.
+
+Suspending an employer cuts their contacts' access on the next request.
 
 ## Authentication
 

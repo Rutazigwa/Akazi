@@ -126,6 +126,34 @@ def create_contact(
     return {"contact_id": contact_id}
 
 
+@router.post("/employers/{employer_id}/contacts/{contact_id}/invite")
+def invite_employer_contact(
+    employer_id: UUID, contact_id: UUID, session: SessionDep, staff: StaffDep
+):
+    """Give an employer contact a login to the employer dashboard.
+
+    Returns a single-use password, shown once. Generated rather than chosen so
+    the coordinator setting it up does not know the employer's password.
+    """
+    from app.employer_auth import invite_contact
+
+    owns = session.execute(
+        text(
+            "SELECT 1 FROM employer_contacts "
+            "WHERE contact_id = :cid AND employer_id = :eid"
+        ),
+        {"cid": str(contact_id), "eid": str(employer_id)},
+    ).first()
+    if not owns:
+        raise HTTPException(status_code=404, detail="no such contact")
+
+    return {
+        "contact_id": contact_id,
+        "temporary_password": invite_contact(session, contact_id),
+        "note": "shown once; the contact signs in at /employer/login",
+    }
+
+
 @router.patch("/employers/{employer_id}")
 def update_employer_tier(
     employer_id: UUID, body: EmployerTier, session: SessionDep, staff: StaffDep
