@@ -110,3 +110,36 @@ def test_the_followup_queue_is_reachable(client, make_placement):
     client.post(f"/placements/{pid}/start", json={"started_on": "2026-01-01"})
     due = client.get("/follow-ups/due").json()["due"]
     assert [d["checkpoint"] for d in due] == ["day_1", "week_1", "day_30", "day_90"]
+
+
+def test_health_reports_ok_when_the_database_is_reachable(api, monkeypatch):
+    """/health opens its own connection, so the test session is not in play."""
+    import contextlib
+
+    import app.main
+
+    @contextlib.contextmanager
+    def reachable(*args, **kwargs):
+        class _Session:
+            def execute(self, *_a, **_kw):
+                return None
+
+        yield _Session()
+
+    monkeypatch.setattr(app.main, "session_scope", reachable)
+    r = api.get("/health")
+    assert r.status_code == 200
+    assert r.json()["database"] == "up"
+
+
+def test_health_returns_503_when_the_database_is_unreachable(api, monkeypatch):
+    """An orchestrator must not keep routing to a container that cannot serve."""
+    import app.main
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("database is gone")
+
+    monkeypatch.setattr(app.main, "session_scope", broken)
+    r = api.get("/health")
+    assert r.status_code == 503
+    assert r.json()["database"] == "down"

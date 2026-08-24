@@ -20,7 +20,9 @@ app/matching/   engine.py is pure functions, no DB access. repository.py is
                 the seam that loads candidates and runs the filters.
                 transport.py estimates fares -- rates are PLACEHOLDERS.
 app/operations/ registry.py (employers, candidates, consent), requests.py
-                (work requests, offers), attendance.py, follow_ups.py
+                (work requests, offers), attendance.py, follow_ups.py,
+                data_rights.py (access + erasure)
+deploy/         Production stack. docs/DEPLOYMENT.md is the runbook.
 app/auth.py     Passwords (argon2), DB-backed session tokens, lockout
 app/deps.py     db_session, current_staff, require_identity_access
 app/routers/    Coordinator HTTP endpoints -- all require a bearer session
@@ -262,6 +264,21 @@ Ordering by `captured_at` alone is wrong: it defaults to `now()`, which in
 PostgreSQL is *transaction* start time, so rows written in one transaction tie
 and `DISTINCT ON` resolves the tie arbitrarily -- a withdrawal could be ignored
 and the candidate stay matchable. See migration 011 and tests/test_consent.py.
+
+### Erasure is redaction, never DELETE
+
+`candidate_identity` cascades into `candidates` and from there into placements,
+attendance, pay records and follow-ups. A literal DELETE destroys an employer's
+confirmed attendance, the pay records proving someone was paid, and another
+candidate's replacement chain. Erasure overwrites the identity row in place and
+keeps the surrogate key.
+
+Never erase `consent_records` or `audit_log`: they are the evidence that the
+processing was lawful and that access was controlled. Destroying them to honour
+a data-protection request is the opposite of compliance.
+
+`erase_candidate_identity()` refuses to run when `app.staff_id` is unset. It is
+the one operation whose actor cannot be reconstructed later.
 
 ### Auth invariants -- do not relax these
 

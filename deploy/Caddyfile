@@ -1,0 +1,31 @@
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# Automatic HTTPS via Let's Encrypt. Certificates renew unattended.
+	# HSTS: once a browser has seen this site over TLS, never let it downgrade.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		# This is a JSON API with a docs page; nothing here loads third-party
+		# script or embeds this system in another page.
+		Content-Security-Policy "default-src 'self'; frame-ancestors 'none'"
+		-Server
+	}
+
+	# Login is the account-takeover surface. Per-account lockout is enforced in
+	# the application; this caps how fast an attacker can spray many accounts.
+	# Requires the caddy-ratelimit plugin -- see docs/DEPLOYMENT.md. Without it
+	# Caddy will fail to start rather than silently serving unprotected.
+	@login path /auth/login
+	rate_limit @login {
+		zone login {
+			key {remote_host}
+			events 10
+			window 1m
+		}
+	}
+
+	reverse_proxy app:8000
+}

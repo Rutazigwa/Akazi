@@ -19,7 +19,7 @@ docker compose up -d db                 # Postgres 16
 
 python -m venv .venv && .venv/bin/pip install -e '.[dev]'
 cp .env.example .env                    # set DATA_RESIDENCY
-.venv/bin/python -m pytest              # 99 tests
+.venv/bin/python -m pytest              # 121 tests
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -33,12 +33,15 @@ migrations/     Numbered SQL, applied in order. Blocks match the blueprint.
 app/config.py   Settings + the residency guard
 app/db.py       Engine, session scope, audit attribution
 app/matching/   The v1 matching engine, transport estimation, DB loading
-app/operations/ Registration, work requests, offers, attendance, guarantee
+app/operations/ Registration, work requests, offers, attendance, guarantee,
+                data subject rights
 app/auth.py     Passwords, sessions, lockout
 app/deps.py     Session + authenticated-staff dependencies
 app/routers/    Coordinator HTTP endpoints
 tests/          Filters, residency guard, and DB-backed operations tests
-scripts/        migrate.sh, testdb.sh, create_staff.py
+scripts/        migrate.sh, testdb.sh, create_staff.py, backup.sh
+deploy/         Production stack: Postgres + app + Caddy (automatic TLS)
+docs/           DEPLOYMENT.md — the Rwanda VPS runbook
 ```
 
 ## Data residency
@@ -170,6 +173,48 @@ entitled to ask.
 
 A refused read logs nothing: the gate runs before the function that logs, so a
 403 is not recorded as a read. There's a test for that.
+
+## Data subject rights
+
+**Access** — `GET /candidates/{id}/data-export` returns everything held about one
+person: identity, profile, consent history, assessments, placements, attendance,
+pay records, follow-ups, and the log of who has read their identity record.
+Producing an export is itself an identity access, so it appears in that log.
+
+**Erasure** — `POST /candidates/{id}/erasure-requests`, then a separate
+`/complete`. It is two steps on purpose: the gap is where someone checks whether
+acting on it would strand an unpaid wage or an active placement. Those blockers
+are returned with the request, and they are **advisory** — the right belongs to
+the person, not to us.
+
+Erasure **redacts rather than deletes**, and this is the important part.
+`candidate_identity` is the parent of `candidates`, which is the parent of
+placements, attendance, pay records and follow-ups, all with `ON DELETE CASCADE`.
+A literal `DELETE` would destroy an employer's confirmed attendance, the pay
+records proving someone was paid, and the replacement chain belonging to an
+entirely different candidate. So the identity row is overwritten in place: names,
+national ID and phone numbers become `NULL` or `ERASED`, home coordinates are
+cleared, and the surrogate key survives. The employment history stays intact and
+is no longer attached to an identifiable person.
+
+Consent records and the audit log survive erasure deliberately — they are the
+evidence that the processing was lawful, and destroying that is the opposite of
+compliance.
+
+Erasure **refuses to run unattributed**. It is the one operation where "who did
+this" can never be reconstructed afterwards, because the data it describes is
+gone.
+
+## Deployment
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). In short: a Rwandan or
+regionally-hosted VPS, disk encrypted with LUKS before anything is installed,
+Postgres on an internal Docker network with no published port, and Caddy in front
+for automatic TLS. Bearer tokens over plaintext HTTP are simply readable, so
+there is no acceptable non-TLS deployment of this system.
+
+`scripts/backup.sh` refuses to write an unencrypted dump and verifies that what
+it wrote decrypts before reporting success.
 
 ## The guarantee
 

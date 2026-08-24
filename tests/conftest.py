@@ -92,7 +92,13 @@ def session(database_url) -> Session:
 
 @pytest.fixture
 def staff_id(session) -> uuid.UUID:
-    return session.execute(
+    """A coordinator, stamped on the transaction as the acting staff member.
+
+    Mirrors production: every authenticated request sets app.staff_id, and the
+    audit triggers read it. Tests that call operations directly would otherwise
+    write unattributed audit rows, which is exactly what the code refuses to do.
+    """
+    staff_id = session.execute(
         text(
             """
             INSERT INTO staff (full_name, phone, role, can_view_identity)
@@ -102,6 +108,11 @@ def staff_id(session) -> uuid.UUID:
         ),
         {"phone": f"+25078{uuid.uuid4().int % 10_000_000:07d}"},
     ).scalar_one()
+    session.execute(
+        text("SELECT set_config('app.staff_id', :sid, true)"),
+        {"sid": str(staff_id)},
+    )
+    return staff_id
 
 
 @pytest.fixture
