@@ -133,12 +133,29 @@ have to be made in advance:
 
 Known gaps, so nobody discovers them at the wrong moment:
 
-- **No password reset flow.** An owner resets a coordinator's password with
-  `scripts/create_staff.py`-style direct access. Fine for a handful of staff,
-  not for thirty.
-- **No 2FA.** A single leaked coordinator password reaches identity data,
-  bounded only by lockout and the identity grant.
-- **No automated log shipping.** `audit_log` lives in the same database it
-  audits. An attacker with database write access can edit it.
+- **No automated log shipping.** `audit_log` is hash-chained, so tampering is
+  *detectable* — but an attacker with enough access can recompute the chain.
+  Publish the head hash off-box to close that (see below).
 - **Rate limiting is per-IP at the proxy.** A distributed attempt across many
   addresses is not covered.
+- **TOTP secrets sit in the database.** Protected by disk encryption at rest and
+  never returned after enrolment, but not separately encrypted. A database
+  compromise yields the second factors along with everything else.
+- **No account recovery without an admin.** If the only owner loses both their
+  password and their phone, recovery means direct database access.
+
+## Publish the audit chain head
+
+`GET /staff/audit/integrity` returns `head_hash`. Record it somewhere the server
+cannot reach — a daily message to a phone, a separate mailbox, a printed log.
+
+The chain makes tampering detectable; publishing the head makes it
+*undeniable*. Once a hash exists off the machine, no local rewrite of history
+can match it. Without that, an attacker with database access can edit a row and
+recompute every hash after it.
+
+```bash
+# e.g. daily, from a machine that is not the server
+curl -s -H "Authorization: Bearer $TOKEN" https://$SITE/staff/audit/integrity \
+    | tee -a ~/akazi-audit-heads.log
+```

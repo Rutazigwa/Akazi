@@ -47,6 +47,12 @@ class AuthenticatedStaff:
     full_name: str
     role: str
     can_view_identity: bool
+    session_id: UUID
+    # Whether a second factor was presented on THIS session, and whether the
+    # account has one at all. Identity access requires both.
+    mfa_satisfied: bool = False
+    mfa_enrolled: bool = False
+    must_change_password: bool = False
 
 
 def hash_password(password: str) -> str:
@@ -57,11 +63,78 @@ def _token_digest(token: str) -> bytes:
     return hashlib.sha256(token.encode()).digest()
 
 
-def set_password(session: Session, staff_id: UUID, password: str) -> None:
+MIN_PASSWORD_LENGTH = 12
+
+
+def set_password(
+    session: Session,
+    staff_id: UUID,
+    password: str,
+    must_change: bool = False,
+) -> None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise AuthError(
+            f"password must be at least {MIN_PASSWORD_LENGTH} characters"
+        )
     session.execute(
-        text("UPDATE staff SET password_hash = :h WHERE staff_id = :sid"),
-        {"h": hash_password(password), "sid": str(staff_id)},
+        text(
+            """
+            UPDATE staff
+               SET password_hash = :h,
+                   password_changed_at = now(),
+                   must_change_password = :must_change,
+                   failed_login_count = 0,
+                   locked_until = NULL
+             WHERE staff_id = :sid
+            """
+        ),
+        {
+            "h": hash_password(password),
+            "sid": str(staff_id),
+            "must_change": must_change,
+        },
     )
+
+
+def change_own_password(
+    session: Session, staff_id: UUID, current_password: str, new_password: str,
+    keep_session_id: UUID | None = None,
+) -> int:
+    """Change a password after re-verifying the current one.
+
+    Every other session is revoked. If the reason for changing is that the old
+    password leaked, leaving the attacker's session alive defeats the exercise.
+    Returns how many sessions were cut.
+    """
+    stored = session.execute(
+        text("SELECT password_hash FROM staff WHERE staff_id = :sid"),
+        {"sid": str(staff_id)},
+    ).scalar_one_or_none()
+    if stored is None:
+        raise AuthError("invalid credentials")
+
+    try:
+        _hasher.verify(stored, current_password)
+    except VerifyMismatchError:
+        raise AuthError("invalid credentials") from None
+
+    if new_password == current_password:
+        raise AuthError("the new password must differ from the current one")
+
+    set_password(session, staff_id, new_password)
+
+    return session.execute(
+        text(
+            """
+            UPDATE staff_sessions SET revoked_at = now()
+             WHERE staff_id = :sid AND revoked_at IS NULL
+               AND expires_at > now()
+               AND (CAST(:keep AS uuid) IS NULL
+                    OR session_id <> CAST(:keep AS uuid))
+            """
+        ),
+        {"sid": str(staff_id), "keep": str(keep_session_id) if keep_session_id else None},
+    ).rowcount
 
 
 def login(
@@ -173,7 +246,9 @@ def authenticate(session: Session, token: str) -> AuthenticatedStaff:
         text(
             """
             SELECT s.staff_id, s.full_name, s.role::text AS role,
-                   s.can_view_identity, ss.session_id
+                   s.can_view_identity, s.must_change_password,
+                   (s.totp_enrolled_at IS NOT NULL) AS mfa_enrolled,
+                   ss.session_id, ss.mfa_satisfied
               FROM staff_sessions ss
               JOIN staff s ON s.staff_id = ss.staff_id
              WHERE ss.token_sha256 = :digest
@@ -201,6 +276,10 @@ def authenticate(session: Session, token: str) -> AuthenticatedStaff:
         full_name=row["full_name"],
         role=row["role"],
         can_view_identity=row["can_view_identity"],
+        session_id=row["session_id"],
+        mfa_satisfied=row["mfa_satisfied"],
+        mfa_enrolled=row["mfa_enrolled"],
+        must_change_password=row["must_change_password"],
     )
 
 

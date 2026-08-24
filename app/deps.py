@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth import AuthenticatedStaff, AuthError, authenticate
+from app.config import get_settings
 from app.db import session_scope
 
 
@@ -62,18 +63,60 @@ StaffDep = Annotated[AuthenticatedStaff, Depends(current_staff)]
 
 
 def require_identity_access(staff: StaffDep) -> AuthenticatedStaff:
-    """Gate on the per-account identity grant.
+    """Gate on the per-account identity grant, plus a second factor.
 
-    Deliberately not a role check. Seniority does not imply entitlement to read
-    national ID numbers -- somebody grants it explicitly, and the audit trail
-    records the read either way.
+    The grant is deliberately not a role check. Seniority does not imply
+    entitlement to read national ID numbers -- somebody grants it explicitly,
+    and the audit trail records the read either way.
+
+    On top of that, identity data requires MFA on the *current session*. A
+    password alone is enough for operational work; it is not enough to reach a
+    national ID number. The errors say which of the two is missing, because
+    "403" with no explanation turns into a support ticket.
     """
     if not staff.can_view_identity:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="this account does not have identity data access",
         )
+
+    if not get_settings().require_mfa_for_identity:
+        return staff
+
+    if not staff.mfa_enrolled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "identity data requires a second factor: enrol one at "
+                "POST /auth/totp/enrol"
+            ),
+        )
+    if not staff.mfa_satisfied:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "identity data requires a second factor on this session: "
+                "present a code at POST /auth/mfa"
+            ),
+        )
     return staff
+
+
+def require_role(*roles: str):
+    """Dependency factory gating an endpoint on staff role."""
+
+    def _check(staff: StaffDep) -> AuthenticatedStaff:
+        if staff.role not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"requires one of: {', '.join(roles)}",
+            )
+        return staff
+
+    return _check
+
+
+AdminDep = Annotated[AuthenticatedStaff, Depends(require_role("owner", "admin"))]
 
 
 IdentityStaffDep = Annotated[AuthenticatedStaff, Depends(require_identity_access)]

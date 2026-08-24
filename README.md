@@ -19,7 +19,7 @@ docker compose up -d db                 # Postgres 16
 
 python -m venv .venv && .venv/bin/pip install -e '.[dev]'
 cp .env.example .env                    # set DATA_RESIDENCY
-.venv/bin/python -m pytest              # 121 tests
+.venv/bin/python -m pytest              # 154 tests
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -36,6 +36,7 @@ app/matching/   The v1 matching engine, transport estimation, DB loading
 app/operations/ Registration, work requests, offers, attendance, guarantee,
                 data subject rights
 app/auth.py     Passwords, sessions, lockout
+app/mfa.py      TOTP enrolment, session elevation, replay guard
 app/deps.py     Session + authenticated-staff dependencies
 app/routers/    Coordinator HTTP endpoints
 tests/          Filters, residency guard, and DB-backed operations tests
@@ -160,6 +161,29 @@ Five failed logins lock an account for 15 minutes. Every failure path — unknow
 account, wrong password, locked, deactivated — returns the same 401 with the same
 body, so there is no way to enumerate staff.
 
+### Two-factor authentication
+
+A password is enough for operational work — attendance, follow-ups, the
+scorecard. It is **not** enough to reach a national ID number. Identity data
+requires a second factor on the current session:
+
+```
+POST /auth/totp/enrol      -> secret + otpauth:// URI (shown once)
+POST /auth/totp/confirm    -> prove the authenticator works
+POST /auth/mfa             -> elevate THIS session
+```
+
+Elevation is per session, not per account. A code presented on a laptop does not
+elevate a token someone else is holding.
+
+A TOTP code stays valid for its whole 30-second step, so a code seen over a
+shoulder or replayed from a proxy log would otherwise work again. The highest
+accepted step is recorded and anything at or below it is refused — reusing a
+code returns `this code has already been used`.
+
+Set `REQUIRE_MFA_FOR_IDENTITY=false` only for local development against
+throwaway data.
+
 ### Identity access is a separate grant
 
 `staff.can_view_identity` gates `/candidates/{id}/identity`, and it is **not**
@@ -215,6 +239,54 @@ there is no acceptable non-TLS deployment of this system.
 
 `scripts/backup.sh` refuses to write an unencrypted dump and verifies that what
 it wrote decrypts before reporting success.
+
+## Staff administration
+
+Owner and admin only, under `/staff`: create an account, reset a forgotten
+password, clear a lost second factor, change role or identity access, deactivate
+someone.
+
+New accounts get a generated single-use password, returned once and forced to
+change at first login — an administrator who picks the password knows it.
+Identity access defaults **off** even for an admin.
+
+Withdrawing identity access, resetting a password, resetting MFA and deactivating
+all **revoke the target's live sessions**. A change of access that waits for a
+token to expire is not a change of access.
+
+Staff rows are never deleted — they are referenced by `candidates.registered_by`,
+`assessment_results.assessed_by` and `audit_log.staff_id`, and removing one would
+orphan the record of who did what.
+
+## The audit log is tamper-evident
+
+`audit_log` lives in the database it audits, so anyone with write access could
+edit the row recording that they read someone's national ID. Each entry is now
+hash-chained to the one before it:
+
+```
+entry_hash = SHA-256(row contents ‖ previous entry_hash)
+```
+
+`GET /staff/audit/integrity` walks the chain and reports the first row that does
+not reconcile:
+
+```json
+{"intact": false,
+ "broken_at": {"broken_at_audit_id": 7,
+               "reason": "entry_hash does not match the row contents — this row was modified"}}
+```
+
+Editing a row and removing one are distinguishable: an edit breaks that row's own
+hash, a deletion breaks the *next* row's `prev_hash`.
+
+`UPDATE` and `DELETE` on `audit_log` are refused outright by rules. The chain is
+what catches someone who disables those rules.
+
+**This makes tampering detectable, not impossible.** An attacker with enough
+access and time can recompute the whole chain. The defence against that is
+publishing `head_hash` somewhere off the server — once a hash exists elsewhere,
+no local rewrite of history can match it.
 
 ## The guarantee
 

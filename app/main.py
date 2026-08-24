@@ -18,6 +18,7 @@ from app.routers import (
     operations,
     registry,
     requests,
+    staff,
 )
 
 settings = get_settings()
@@ -28,6 +29,7 @@ app.include_router(identity.router)
 app.include_router(data_rights.router)
 app.include_router(registry.router)
 app.include_router(requests.router)
+app.include_router(staff.router)
 app.include_router(operations.router)
 
 

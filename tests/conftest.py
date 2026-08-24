@@ -102,7 +102,7 @@ def staff_id(session) -> uuid.UUID:
         text(
             """
             INSERT INTO staff (full_name, phone, role, can_view_identity)
-            VALUES ('Coordinator', :phone, 'coordinator', true)
+            VALUES ('Coordinator', :phone, 'owner', true)
             RETURNING staff_id
             """
         ),
@@ -212,14 +212,44 @@ STAFF_PASSWORD = "correct horse battery staple"
 
 @pytest.fixture
 def staff_login(session, staff_id):
-    """A staff account with a real password set, and its phone number."""
+    """A staff account with a password and a confirmed second factor.
+
+    TOTP is enrolled here because identity access requires it. Tests that need
+    to exercise the un-enrolled path clear it explicitly.
+    """
+    import pyotp
+
     from app.auth import set_password
+    from app.mfa import begin_enrolment, confirm_enrolment
 
     set_password(session, staff_id, STAFF_PASSWORD)
+    enrolment = begin_enrolment(session, staff_id)
+    confirm_enrolment(session, staff_id, pyotp.TOTP(enrolment.secret).now())
+
     phone = session.execute(
         text("SELECT phone FROM staff WHERE staff_id = :sid"), {"sid": staff_id}
     ).scalar_one()
-    return {"phone": phone, "password": STAFF_PASSWORD, "staff_id": staff_id}
+    return {
+        "phone": phone,
+        "password": STAFF_PASSWORD,
+        "staff_id": staff_id,
+        "totp_secret": enrolment.secret,
+    }
+
+
+def totp_now(secret: str, skew_steps: int = 0) -> str:
+    """A current TOTP code, optionally from a neighbouring time step.
+
+    Tests that present two codes in a row need distinct ones: the replay guard
+    refuses a code at or below the last accepted counter, which is the whole
+    point of it.
+    """
+    import time
+
+    import pyotp
+
+    totp = pyotp.TOTP(secret)
+    return totp.at(int(time.time()) + skew_steps * 30)
 
 
 @pytest.fixture
@@ -238,15 +268,23 @@ def api(session):
 
 @pytest.fixture
 def client(api, staff_login):
-    """An authenticated TestClient.
+    """An authenticated, MFA-elevated TestClient.
 
-    Logs in through the real endpoint rather than forging a token, so every
-    test exercises the actual authentication path.
+    Logs in and presents a second factor through the real endpoints rather than
+    forging a token, so every test exercises the actual path a coordinator takes.
     """
     r = api.post(
         "/auth/login",
         json={"phone": staff_login["phone"], "password": staff_login["password"]},
     )
     assert r.status_code == 200, r.text
+    assert r.json()["mfa_required"] is True
     api.headers["Authorization"] = f"Bearer {r.json()['token']}"
+
+    # A code from the next time step: enrolment already consumed the current
+    # one, and the replay guard refuses anything at or below it.
+    elevated = api.post(
+        "/auth/mfa", json={"code": totp_now(staff_login["totp_secret"], 1)}
+    )
+    assert elevated.status_code == 200, elevated.text
     return api

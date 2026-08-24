@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     app_name: str = "Placement Operations"
     debug: bool = False
 
+    # Identity data requires a second factor on the session. Defaults on: a
+    # single leaked coordinator password otherwise reaches national ID numbers.
+    # Turn it off only for local development against throwaway data.
+    require_mfa_for_identity: bool = True
+
     @model_validator(mode="after")
     def _check_residency(self) -> "Settings":
         host = (urlparse(self.database_url).hostname or "").lower()

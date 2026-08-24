@@ -24,6 +24,7 @@ app/operations/ registry.py (employers, candidates, consent), requests.py
                 data_rights.py (access + erasure)
 deploy/         Production stack. docs/DEPLOYMENT.md is the runbook.
 app/auth.py     Passwords (argon2), DB-backed session tokens, lockout
+app/mfa.py      TOTP: enrolment, per-session elevation, replay guard
 app/deps.py     db_session, current_staff, require_identity_access
 app/routers/    Coordinator HTTP endpoints -- all require a bearer session
 app/main.py     FastAPI admin app (coordinators and owner only)
@@ -282,6 +283,19 @@ the one operation whose actor cannot be reconstructed later.
 
 ### Auth invariants -- do not relax these
 
+- **Identity data requires MFA on the current session.** A password alone
+  reaches operational data; it must never reach a national ID number.
+  Elevation is per session -- never per account.
+- **The TOTP replay guard stays.** A code is valid for its whole 30-second
+  step; without `last_totp_counter` an observed code works again until the
+  step rolls over. Do not widen `TOTP_DRIFT_STEPS` beyond 1 to be forgiving --
+  it multiplies the number of codes valid at any moment.
+- **The audit chain is append-only and verified, never rebuilt.** If
+  `verify_audit_chain()` reports a break, that is a finding to investigate --
+  never a thing to "fix" by recomputing hashes. Recomputing the chain is
+  precisely what an attacker would do.
+- **Access changes revoke sessions.** Withdrawing identity access, resetting a
+  password or deactivating an account must cut live sessions immediately.
 - **Tokens stay stateful.** Swapping the `staff_sessions` table for JWTs would
   remove revocation, and revocation is the point: deactivating a coordinator
   must cut their access on the next request, not at token expiry.
