@@ -55,8 +55,16 @@ cp deploy/.env.example deploy/.env
 $EDITOR deploy/.env          # SITE_ADDRESS, POSTGRES_PASSWORD, DATA_RESIDENCY
 
 docker compose -f deploy/docker-compose.prod.yml up -d db
+
+# Migrations run as the owner.
 docker compose -f deploy/docker-compose.prod.yml run --rm app \
     ./scripts/migrate.sh "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB"
+
+# The application then runs as a role that owns nothing. Do NOT skip this.
+docker compose -f deploy/docker-compose.prod.yml exec -T db \
+    psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "SELECT set_config('akazi.app_password', '$APP_DB_PASSWORD', false);" \
+    -f /scripts/create_app_role.sql
 
 docker compose -f deploy/docker-compose.prod.yml up -d
 
@@ -85,6 +93,36 @@ look like a broken deploy if you have not read this.
 Removing it is a real reduction in protection. Per-account lockout (five
 failures, 15 minutes) still applies, but nothing then limits an attacker
 spraying one attempt each across many accounts.
+
+## Run the app as a role that owns nothing
+
+`APP_DB_URL` should point at `akazi_app`, not at `POSTGRES_USER`. The owner role
+is for migrations only.
+
+This is not tidiness. Connecting as the owner means the application can
+`ALTER TABLE audit_log DISABLE RULE`, drop the hash-chain trigger, or drop the
+audit log altogether — which is exactly the tampering the chain exists to make
+detectable. `akazi_app` owns nothing, so:
+
+```
+direct SELECT on candidate_identity: false   # reads go through the audited function
+EXECUTE read_candidate_identity:      true
+is superuser:                         false
+ALTER TABLE audit_log DISABLE RULE:   ERROR: must be owner of table audit_log
+```
+
+`scripts/create_app_role.sql` refuses to finish if the role ends up with more
+than it should — a superuser, `pg_read_all_data`, or direct read access to
+identity data.
+
+**Known limitation.** The application uses a single database connection, so
+`akazi_app` holds both `app_operations` and `app_identity`. The two roles are
+therefore not separated at runtime; the separation that *is* enforced is
+against the table (no direct `SELECT` on `candidate_identity` from either) and
+against schema ownership. Splitting identity work onto a second connection
+holding only `app_identity`, with the first holding only `app_operations`, is
+the next hardening step and would make an operational-code bug physically
+unable to reach a national ID number.
 
 ## Network posture
 

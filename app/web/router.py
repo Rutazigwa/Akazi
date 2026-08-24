@@ -52,6 +52,7 @@ from app.web.deps import (
     CsrfStaffDep,
     WebStaffDep,
     clear_session_cookie,
+    safe_path,
     set_session_cookie,
 )
 
@@ -107,11 +108,18 @@ def do_login(
     from app.auth import authenticate
 
     staff = authenticate(session, token)
+    # `next` arrives from a query string, so it is attacker-controllable in a
+    # link. Only a local path survives.
+    destination = safe_path(next, "/ui/")
     # Enrolled but not yet elevated: offer the code now rather than letting the
     # coordinator hit a wall on the first screen that needs it.
-    target = "/ui/mfa" if staff.mfa_enrolled else (next or "/ui/")
-    if staff.mfa_enrolled and next:
-        target = f"/ui/mfa?next={next}"
+    target = destination
+    if staff.mfa_enrolled:
+        target = "/ui/mfa"
+        if destination != "/ui/":
+            from urllib.parse import quote
+
+            target = f"/ui/mfa?next={quote(destination)}"
 
     response = RedirectResponse(target, status_code=303)
     set_session_cookie(response, token)
@@ -138,7 +146,7 @@ def do_mfa(
         elevate_session(session, staff.staff_id, staff.session_id, code)
     except MFAError as exc:
         return _back("/ui/mfa", str(exc), "err")
-    return _back(next or "/ui/", "Second factor verified")
+    return _back(safe_path(next, "/ui/"), "Second factor verified")
 
 
 @router.post("/logout")
@@ -618,7 +626,6 @@ def replace(
 @router.post("/follow-ups/{follow_up_id}/complete")
 def complete(
     follow_up_id: UUID,
-    request: Request,
     session: SessionDep,
     staff: CsrfStaffDep,
     still_working: Annotated[str, Form()],
@@ -630,5 +637,13 @@ def complete(
         still_working == "true",
         issue_flag=issue_flag or None,
     )
-    referer = request.headers.get("referer", "/ui/")
-    return _back(referer.split("?")[0], "Check-in recorded")
+    # Derived from the record, not from the Referer header. Referer is set by
+    # whatever page submitted the form, so trusting it made this an open
+    # redirect: a coordinator could be bounced to an attacker's site with a
+    # fresh session in hand.
+    placement_id = session.execute(
+        text("SELECT placement_id FROM follow_ups WHERE follow_up_id = :fid"),
+        {"fid": str(follow_up_id)},
+    ).scalar_one_or_none()
+    target = f"/ui/placements/{placement_id}" if placement_id else "/ui/"
+    return _back(target, "Check-in recorded")

@@ -30,6 +30,11 @@ from uuid import UUID
 # higher latitudes. Revisit only if the operation expands beyond Rwanda.
 AFTER_DARK = time(18, 0)
 
+# Enforced here, by chk_minimum_age on candidate_identity, and in the
+# registration path. Narrow apprenticeship exceptions for 13-15 are not
+# supported anywhere.
+MINIMUM_AGE = 16
+
 # Transport must stay under this share of daily pay unless the employer covers
 # it. Pilot target is <= 25%; the matcher rejects at 30% to leave headroom
 # between "we would rather not" and "we will not place this".
@@ -95,7 +100,11 @@ class Candidate:
     candidate_id: UUID
     display_name: str
     gender: str | None  # F | M | X | None
-    date_of_birth: date
+    # One of these must be set. The repository supplies age_eligible, derived
+    # by the database, so that operational code never reads a date of birth --
+    # see migration 018. Pure-domain callers may pass date_of_birth instead.
+    date_of_birth: date | None = None
+    age_eligible: bool | None = None
     availability: Sequence[AvailabilityWindow] = ()
     skill_scores: dict[str, int] = field(default_factory=dict)
     max_commute_rwf: int | None = None
@@ -110,6 +119,8 @@ class Candidate:
     assessment_score: int = 0
 
     def age_on(self, when: date) -> int:
+        if self.date_of_birth is None:
+            raise ValueError("no date of birth on this candidate record")
         years = when.year - self.date_of_birth.year
         if (when.month, when.day) < (
             self.date_of_birth.month,
@@ -117,6 +128,19 @@ class Candidate:
         ):
             years -= 1
         return years
+
+    def meets_minimum_age(self, when: date) -> bool:
+        """Whether this candidate is old enough to be placed on `when`.
+
+        Unknown means excluded. A candidate whose age we cannot establish is
+        not someone to place at all -- the failure mode of guessing wrong here
+        is placing a child.
+        """
+        if self.age_eligible is not None:
+            return self.age_eligible
+        if self.date_of_birth is not None:
+            return self.age_on(when) >= MINIMUM_AGE
+        return False
 
 
 @dataclass(frozen=True)
@@ -144,8 +168,11 @@ def _minutes(t: time) -> int:
 
 def _hard_exclusions(c: Candidate, r: WorkRequest) -> str | None:
     """Legal and contractual disqualifiers. Never overridable by ranking."""
-    if c.age_on(r.starts_on) < 16:
-        return "under minimum working age of 16 on the start date"
+    if not c.meets_minimum_age(r.starts_on):
+        return (
+            f"under minimum working age of {MINIMUM_AGE} on the start date, "
+            f"or age could not be established"
+        )
     if not c.has_placement_consent:
         return "no current consent record for the placement purpose"
 

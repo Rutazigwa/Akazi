@@ -93,7 +93,7 @@ _CANDIDATE_SQL = """
 SELECT c.candidate_id,
        c.display_name,
        c.gender,
-       ci.date_of_birth,
+       COALESCE(elig.age_eligible, false) AS age_eligible,
        c.home_lat,
        c.home_lng,
        c.max_commute_rwf,
@@ -106,8 +106,11 @@ SELECT c.candidate_id,
        COALESCE(skills.scores, '{}'::jsonb)       AS skill_scores,
        COALESCE(windows.slots, '[]'::jsonb)       AS availability
   FROM candidates c
-  -- date_of_birth is the one identity field matching needs, for the age filter.
-  JOIN candidate_identity ci ON ci.candidate_id = c.candidate_id
+  -- Age eligibility arrives as a boolean from a SECURITY DEFINER function, so
+  -- no date of birth crosses the identity boundary and operational code needs
+  -- no grant on candidate_identity. See migration 018.
+  LEFT JOIN candidates_age_eligible(:starts_on) elig
+         ON elig.candidate_id = c.candidate_id
   LEFT JOIN LATERAL (
       SELECT vc.granted FROM v_current_consent vc
        WHERE vc.candidate_id = c.candidate_id AND vc.purpose = 'placement'
@@ -173,7 +176,11 @@ def load_candidates(
     prevents most 30-day dropouts cannot run for that person.
     """
     rows = session.execute(
-        text(_CANDIDATE_SQL), {"employer_id": str(context.employer_id)}
+        text(_CANDIDATE_SQL),
+        {
+            "employer_id": str(context.employer_id),
+            "starts_on": context.request.starts_on,
+        },
     ).mappings()
 
     candidates: list[Candidate] = []
@@ -189,7 +196,7 @@ def load_candidates(
                 candidate_id=row["candidate_id"],
                 display_name=row["display_name"],
                 gender=row["gender"],
-                date_of_birth=row["date_of_birth"],
+                age_eligible=row["age_eligible"],
                 availability=[
                     AvailabilityWindow(dow, _parse_time(start), _parse_time(end))
                     for dow, start, end in row["availability"]

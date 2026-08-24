@@ -24,6 +24,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backups:/backups
+      - ../scripts:/scripts:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-akazi}"]
       interval: 10s
@@ -37,7 +38,9 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-akazi}
+      # The least-privileged role, not the owner. The owner is for migrations
+      # only -- an app connected as owner can disable the audit-log rules.
+      DATABASE_URL: postgresql+psycopg://akazi_app:${APP_DB_PASSWORD:?set in .env}@db:5432/${POSTGRES_DB:-akazi}
       DATA_RESIDENCY: ${DATA_RESIDENCY:?state the residency posture explicitly}
       NCSA_CERTIFICATE_REF: ${NCSA_CERTIFICATE_REF:-}
       DEBUG: "false"

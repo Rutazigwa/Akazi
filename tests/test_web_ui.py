@@ -380,3 +380,81 @@ def test_no_transport_estimate_is_not_shown_as_free(web, session, staff_login):
     assert "walkable" in matches
     assert "no estimate" in matches
     assert "home location missing" in matches
+
+
+# --- open redirect ---------------------------------------------------------
+
+def test_next_cannot_send_the_browser_off_site(api, staff_login):
+    """An attacker-supplied ?next= must not survive login.
+
+    A coordinator bounced to another origin immediately after signing in is
+    exactly the setup for a convincing fake login page — they have just typed
+    their password, so a second prompt does not look strange.
+    """
+    for hostile in [
+        "https://evil.example.com/steal",
+        "//evil.example.com/steal",
+        "/\\evil.example.com",
+    ]:
+        r = api.post(
+            "/ui/login",
+            data={
+                "phone": staff_login["phone"],
+                "password": staff_login["password"],
+                "next": hostile,
+            },
+            follow_redirects=False,
+        )
+        location = r.headers["location"]
+        assert "evil.example.com" not in location, hostile
+        assert location.startswith("/ui/"), location
+
+
+def test_a_local_next_still_works(api, staff_login):
+    r = api.post(
+        "/ui/login",
+        data={
+            "phone": staff_login["phone"],
+            "password": staff_login["password"],
+            "next": "/ui/employers",
+        },
+        follow_redirects=False,
+    )
+    assert "/ui/employers" in r.headers["location"]
+
+
+def test_completing_a_checkin_ignores_the_referer_header(
+    web, session, make_placement
+):
+    """The redirect target comes from the record, not from Referer.
+
+    Referer is set by whatever page submitted the form, so trusting it made
+    this an open redirect.
+    """
+    from app.operations.attendance import start_placement
+
+    pid = make_placement()
+    page = web.get("/ui/").text
+    web.post(
+        f"/ui/placements/{pid}/respond",
+        data={"csrf_token": csrf(page), "accepted": "true"}, follow_redirects=True,
+    )
+    start_placement(session, pid, TODAY - timedelta(days=40))
+
+    follow_up_id = session.execute(
+        text(
+            "SELECT follow_up_id FROM follow_ups "
+            "WHERE placement_id = :pid AND checkpoint = 'day_1'"
+        ),
+        {"pid": pid},
+    ).scalar_one()
+
+    page = web.get("/ui/").text
+    r = web.post(
+        f"/ui/follow-ups/{follow_up_id}/complete",
+        data={"csrf_token": csrf(page), "still_working": "true"},
+        headers={"Referer": "https://evil.example.com/phish"},
+        follow_redirects=False,
+    )
+    assert "evil.example.com" not in r.headers["location"]
+    assert str(pid) in r.headers["location"]

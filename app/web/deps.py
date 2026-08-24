@@ -97,6 +97,30 @@ async def verify_csrf(request: Request, staff: WebStaffDep) -> AuthenticatedStaf
 CsrfStaffDep = Annotated[AuthenticatedStaff, Depends(verify_csrf)]
 
 
+def safe_path(candidate: str | None, fallback: str = "/ui/") -> str:
+    """Return `candidate` only if it is a local path on this site.
+
+    Anything that could send a browser to another origin is discarded. An open
+    redirect is not harmless here: a coordinator bounced to an attacker's site
+    straight after signing in is exactly the setup for a convincing fake login
+    page, and the session cookie they just received makes the visit look
+    legitimate to them.
+
+    Rejected: absolute URLs, protocol-relative `//host` (a browser treats that
+    as another origin), backslashes (some browsers normalise them to slashes),
+    and control characters that could smuggle a header.
+    """
+    if not candidate:
+        return fallback
+    if not candidate.startswith("/"):
+        return fallback
+    if candidate.startswith("//") or candidate.startswith("/\\"):
+        return fallback
+    if "\\" in candidate or any(ord(c) < 0x20 or ord(c) == 0x7F for c in candidate):
+        return fallback
+    return candidate
+
+
 def redirect_to_login(request: Request) -> RedirectResponse:
     """Send an unauthenticated browser to the login page, remembering where."""
     target = request.url.path

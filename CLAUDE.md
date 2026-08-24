@@ -286,6 +286,34 @@ a data-protection request is the opposite of compliance.
 `erase_candidate_identity()` refuses to run when `app.staff_id` is unset. It is
 the one operation whose actor cannot be reconstructed later.
 
+### Database privileges -- tests run as superuser, production does not
+
+The suite connects as superuser, where GRANT and REVOKE do not apply. That
+hid a production-breaking bug once: the matcher joined `candidate_identity`,
+which `app_operations` cannot read, so matching failed on any deployment
+using the role model.
+
+`tests/test_privileges.py` runs the real queries under `SET ROLE
+app_operations`. **Add a case there whenever operational code touches a new
+table**, or the same class of bug comes back.
+
+Operational code must never need `SELECT` on `candidate_identity`. When it
+needs a fact derived from identity data, expose the derived fact through a
+`SECURITY DEFINER` function -- see `candidates_age_eligible()` in migration
+018, which returns a boolean rather than a date of birth.
+
+The application runs as `akazi_app`, which owns nothing. Do not "fix" a
+permission error by connecting as the owner: an app connected as owner can
+disable the audit-log rules, which is the tampering the hash chain exists to
+detect.
+
+### Redirect targets
+
+Never redirect to a value taken from `Referer`, a query parameter, or a form
+field without passing it through `safe_path()`. Both were live open redirects
+at one point: a coordinator bounced to another origin straight after signing
+in is the setup for a convincing fake login page.
+
 ### Employer isolation -- the sharpest edge in the system
 
 - **Employers and staff are separate principals in separate tables.** Never
