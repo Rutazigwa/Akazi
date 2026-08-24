@@ -18,6 +18,7 @@ from app.routers import (
     identity,
     inbound,
     operations,
+    pay,
     registry,
     requests,
     staff,
@@ -36,6 +37,7 @@ app.include_router(data_rights.router)
 app.include_router(registry.router)
 app.include_router(requests.router)
 app.include_router(inbound.router)
+app.include_router(pay.router)
 app.include_router(staff.router)
 app.include_router(web_router.router)
 app.include_router(employer_router.router)

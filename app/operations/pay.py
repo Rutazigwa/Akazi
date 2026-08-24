@@ -1,0 +1,246 @@
+"""Recording pay. Gap 3 of the four: whether the money moves correctly.
+
+No money moves through this system in the pilot -- that is a hard constraint,
+and this module honours it by being a ledger of claims, not a payment rail. The
+employer pays the worker directly; we record what was agreed, what was due,
+what landed, and whether the worker says so.
+
+Three timestamps carry the metric:
+
+    due_on            when the employer agreed to pay
+    paid_on           when the employer says it was paid
+    worker_confirmed  whether the worker agrees it arrived, in full
+
+Pay accuracy (>= 95% in full, on the agreed date) needs all three. An employer
+saying "paid" is a claim; the worker confirming is the fact. The gap between
+the two is precisely where informal-work pay disputes live, and being the party
+that notices the gap is part of what the placement fee buys.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+
+class PayError(Exception):
+    pass
+
+
+def record_pay_period(
+    session: Session,
+    placement_id: UUID,
+    period_start: date,
+    period_end: date,
+    gross_rwf: int,
+    due_on: date,
+    deductions_rwf: int = 0,
+    method: str | None = None,
+) -> UUID:
+    """Open a pay period: what is owed, and when it falls due.
+
+    Created when the terms are known -- usually when the period ends -- not
+    when the money lands. A record created only at payment can never show a
+    payment that failed to happen, and the missing ones are the point.
+    """
+    if period_end < period_start:
+        raise PayError("the period cannot end before it starts")
+    if gross_rwf <= 0:
+        raise PayError("gross pay must be positive")
+    if deductions_rwf < 0 or deductions_rwf > gross_rwf:
+        raise PayError("deductions must be between zero and gross pay")
+    if due_on < period_start:
+        raise PayError("pay cannot fall due before the period it covers")
+    if method is not None and method not in ("momo", "cash", "bank"):
+        raise PayError("method must be momo, cash or bank")
+
+    exists = session.execute(
+        text("SELECT 1 FROM placements WHERE placement_id = :pid"),
+        {"pid": str(placement_id)},
+    ).first()
+    if exists is None:
+        raise PayError("no such placement")
+
+    overlap = session.execute(
+        text(
+            """
+            SELECT 1 FROM pay_records
+             WHERE placement_id = :pid
+               AND period_start <= :end AND period_end >= :start
+            """
+        ),
+        {"pid": str(placement_id), "start": period_start, "end": period_end},
+    ).first()
+    if overlap:
+        raise PayError(
+            "this placement already has a pay record overlapping that period"
+        )
+
+    return session.execute(
+        text(
+            """
+            INSERT INTO pay_records (placement_id, period_start, period_end,
+                                     gross_rwf, deductions_rwf, due_on, method)
+            VALUES (:pid, :start, :end, :gross, :deductions, :due, :method)
+            RETURNING pay_id
+            """
+        ),
+        {
+            "pid": str(placement_id), "start": period_start, "end": period_end,
+            "gross": gross_rwf, "deductions": deductions_rwf, "due": due_on,
+            "method": method,
+        },
+    ).scalar_one()
+
+
+def suggest_pay_period(session: Session, placement_id: UUID) -> dict | None:
+    """Pre-fill a pay record from what the system already knows.
+
+    Days present come from confirmed attendance and the rate from the agreed
+    terms, so the coordinator corrects a suggestion instead of typing sums --
+    and the suggestion never silently disagrees with the attendance record.
+    Only meaningful for daily-rate work; other units return the window alone.
+    """
+    row = session.execute(
+        text(
+            """
+            SELECT p.agreed_pay_rwf, p.pay_unit,
+                   min(a.work_date) AS first_day,
+                   max(a.work_date) AS last_day,
+                   count(*) FILTER (WHERE a.present) AS days_present
+              FROM placements p
+              LEFT JOIN attendance a ON a.placement_id = p.placement_id
+             WHERE p.placement_id = :pid
+             GROUP BY p.placement_id, p.agreed_pay_rwf, p.pay_unit
+            """
+        ),
+        {"pid": str(placement_id)},
+    ).mappings().first()
+    if row is None or row["first_day"] is None:
+        return None
+
+    gross = (
+        row["agreed_pay_rwf"] * row["days_present"]
+        if row["pay_unit"] == "day"
+        else None
+    )
+    return {
+        "period_start": row["first_day"],
+        "period_end": row["last_day"],
+        "days_present": row["days_present"],
+        "gross_rwf": gross,
+        "pay_unit": row["pay_unit"],
+        "rate_rwf": row["agreed_pay_rwf"],
+    }
+
+
+def mark_paid(
+    session: Session, pay_id: UUID, paid_on: date, method: str | None = None
+) -> None:
+    """The employer's claim that the money moved."""
+    updated = session.execute(
+        text(
+            """
+            UPDATE pay_records
+               SET paid_on = :paid_on, method = COALESCE(:method, method)
+             WHERE pay_id = :pay_id AND paid_on IS NULL
+            RETURNING pay_id
+            """
+        ),
+        {"pay_id": str(pay_id), "paid_on": paid_on, "method": method},
+    ).scalar_one_or_none()
+    if updated is None:
+        raise PayError("no such pay record, or it is already marked paid")
+
+
+def confirm_with_worker(
+    session: Session, pay_id: UUID, received_in_full: bool,
+    note: str | None = None,
+) -> UUID | None:
+    """The worker's answer, taken on the follow-up call.
+
+    A worker saying the money did not arrive in full raises a pay escalation
+    on the spot -- the coordinator on the phone should not have to remember a
+    second step, and this record is the moment the dispute is known to us.
+    Returns the escalation id when one is raised.
+    """
+    row = session.execute(
+        text(
+            """
+            UPDATE pay_records SET worker_confirmed = :confirmed
+             WHERE pay_id = :pay_id
+            RETURNING placement_id, net_rwf, period_start, period_end
+            """
+        ),
+        {"pay_id": str(pay_id), "confirmed": received_in_full},
+    ).mappings().first()
+    if row is None:
+        raise PayError("no such pay record")
+
+    if received_in_full:
+        return None
+
+    from app.operations.escalations import raise_escalation
+
+    candidate_id = session.execute(
+        text("SELECT candidate_id FROM placements WHERE placement_id = :pid"),
+        {"pid": row["placement_id"]},
+    ).scalar_one()
+    detail = (
+        f"worker says pay for {row['period_start']}–{row['period_end']} "
+        f"(net RWF {row['net_rwf']:,}) did not arrive in full"
+    )
+    if note:
+        detail += f" — {note}"
+    return raise_escalation(
+        session, "pay",
+        candidate_id=candidate_id,
+        placement_id=row["placement_id"],
+        detail=detail,
+    )
+
+
+def overdue_pay(session: Session, as_of: date | None = None) -> list[dict]:
+    """Pay past its agreed date with no payment recorded. The chase list.
+
+    Ordered by how much and how late: the biggest oldest debt is the
+    relationship most at risk, on both sides.
+    """
+    rows = session.execute(
+        text(
+            """
+            SELECT pr.pay_id, pr.placement_id, pr.period_start, pr.period_end,
+                   pr.net_rwf, pr.due_on,
+                   (CAST(:as_of AS date) - pr.due_on) AS days_overdue,
+                   c.display_name, e.business_name
+              FROM pay_records pr
+              JOIN placements p     ON p.placement_id = pr.placement_id
+              JOIN candidates c     ON c.candidate_id = p.candidate_id
+              JOIN work_requests wr ON wr.request_id = p.request_id
+              JOIN employers e      ON e.employer_id = wr.employer_id
+             WHERE pr.paid_on IS NULL AND pr.due_on < CAST(:as_of AS date)
+             ORDER BY pr.due_on ASC, pr.net_rwf DESC
+            """
+        ),
+        {"as_of": as_of or date.today()},
+    ).mappings()
+    return [dict(r) for r in rows]
+
+
+def pay_records_for_placement(session: Session, placement_id: UUID) -> list[dict]:
+    rows = session.execute(
+        text(
+            """
+            SELECT pay_id, period_start, period_end, gross_rwf, deductions_rwf,
+                   net_rwf, due_on, paid_on, method, worker_confirmed
+              FROM pay_records
+             WHERE placement_id = :pid
+             ORDER BY period_start
+            """
+        ),
+        {"pid": str(placement_id)},
+    ).mappings()
+    return [dict(r) for r in rows]

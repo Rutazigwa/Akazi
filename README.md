@@ -397,6 +397,21 @@ a real person. A live WhatsApp Business provider is deliberately not written: th
 API shape depends on which BSP you sign with, and guessing produces code that
 looks finished and has never run. It needs to satisfy one protocol method.
 
+## Pay
+
+No money moves through Akazi — that is a pilot constraint, and `app/operations/pay.py`
+honours it by being a ledger of claims. A pay period is opened when the terms are
+known (pre-filled from confirmed attendance × the agreed rate), the employer's
+payment is a claim (`paid_on`), and the worker's confirmation on the follow-up
+call is the fact. **Pay accuracy counts only records with all three**: an
+employer saying "paid" is not accuracy until the worker agrees it arrived in
+full — the gap between the claim and the confirmation is where informal-work pay
+disputes live.
+
+A worker reporting a shortfall raises a pay escalation in the same call. Pay
+past its agreed date with nothing recorded appears on the dashboard chase list,
+ordered by how much and how late.
+
 ## Replies, and the escalation path
 
 The outbound templates ask people to reply. Until this existed nothing read

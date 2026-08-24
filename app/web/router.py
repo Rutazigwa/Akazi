@@ -40,6 +40,15 @@ from app.operations.escalations import (
     open_escalations,
 )
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
+from app.operations.pay import (
+    PayError,
+    confirm_with_worker,
+    mark_paid,
+    overdue_pay,
+    pay_records_for_placement,
+    record_pay_period,
+    suggest_pay_period,
+)
 from app.operations.registry import (
     AvailabilitySlot,
     RegistryError,
@@ -193,6 +202,7 @@ def dashboard(request: Request, session: SessionDep, staff: WebStaffDep):
         nav="dashboard",
         escalations=open_escalations(session),
         unread_replies=needs_attention(session),
+        overdue_pay=overdue_pay(session),
         guarantees=open_guarantees(session),
         follow_ups=due_follow_ups(session, date.today()),
         requests=open_requests(session),
@@ -547,6 +557,8 @@ def placement_page(
     return _render(
         request, "placement.html", staff,
         p=dict(row),
+        pay_records=pay_records_for_placement(session, placement_id),
+        pay_suggestion=suggest_pay_period(session, placement_id),
         attendance=[dict(a) for a in attendance],
         follow_ups=[dict(f) for f in follow_ups],
         replacement=dict(replacement) if replacement else None,
@@ -640,6 +652,69 @@ def replace(
     except AttendanceError as exc:
         return _back(f"/ui/placements/{placement_id}", str(exc), "err")
     return _back(f"/ui/placements/{new_id}", "Covered — guarantee honoured")
+
+
+@router.post("/placements/{placement_id}/pay")
+async def create_pay_period(
+    placement_id: UUID, request: Request, session: SessionDep, staff: CsrfStaffDep
+):
+    form = await request.form()
+    try:
+        record_pay_period(
+            session, placement_id,
+            date.fromisoformat(str(form["period_start"])),
+            date.fromisoformat(str(form["period_end"])),
+            int(form["gross_rwf"]),
+            date.fromisoformat(str(form["due_on"])),
+            int(form.get("deductions_rwf") or 0),
+            str(form.get("method") or "") or None,
+        )
+    except (PayError, ValueError) as exc:
+        return _back(f"/ui/placements/{placement_id}", str(exc), "err")
+    return _back(f"/ui/placements/{placement_id}", "Pay period recorded")
+
+
+@router.post("/pay/{pay_id}/paid")
+def pay_paid(
+    pay_id: UUID,
+    request: Request,
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    paid_on: Annotated[str, Form()],
+):
+    placement = session.execute(
+        text("SELECT placement_id FROM pay_records WHERE pay_id = :p"),
+        {"p": str(pay_id)},
+    ).scalar_one_or_none()
+    try:
+        mark_paid(session, pay_id, date.fromisoformat(paid_on))
+    except PayError as exc:
+        return _back(f"/ui/placements/{placement}", str(exc), "err")
+    return _back(f"/ui/placements/{placement}", "Marked paid — confirm with the worker")
+
+
+@router.post("/pay/{pay_id}/confirm")
+def pay_confirm(
+    pay_id: UUID,
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    shortfall: Annotated[str, Form()] = "",
+):
+    placement = session.execute(
+        text("SELECT placement_id FROM pay_records WHERE pay_id = :p"),
+        {"p": str(pay_id)},
+    ).scalar_one_or_none()
+    try:
+        escalation_id = confirm_with_worker(session, pay_id, shortfall != "true")
+    except PayError as exc:
+        return _back(f"/ui/placements/{placement}", str(exc), "err")
+    if escalation_id:
+        return _back(
+            "/ui/",
+            "Shortfall recorded — a pay escalation is open and the clock is running",
+            "err",
+        )
+    return _back(f"/ui/placements/{placement}", "Worker confirmed — paid in full")
 
 
 @router.post("/follow-ups/{follow_up_id}/complete")

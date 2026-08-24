@@ -46,8 +46,13 @@ def database_url() -> str:
     with admin_engine.connect() as conn:
         conn.execute(text(f'CREATE DATABASE "{db_name}"'))
 
-    target = admin.replace("/postgres?", f"/{db_name}?")
+    # Swap the database name properly rather than string-replacing "/postgres?",
+    # which silently does nothing when the URL has no query string -- and the
+    # tests would then run unmigrated against the admin database.
+    base, _, query = admin.partition("?")
+    target = base.rsplit("/", 1)[0] + f"/{db_name}" + (f"?{query}" if query else "")
     psql_dsn = target.replace("postgresql+psycopg://", "postgresql://")
+    assert db_name in psql_dsn, "test database name did not make it into the DSN"
     for migration in MIGRATIONS:
         result = subprocess.run(
             ["psql", psql_dsn, "-q", "-v", "ON_ERROR_STOP=1", "-f", str(migration)],

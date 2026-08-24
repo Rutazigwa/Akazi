@@ -38,6 +38,8 @@ scripts/        migrate.sh
 ```
 
 Run `env DATA_RESIDENCY=local_dev .venv/bin/python -m pytest` before pushing.
+CI (.github/workflows/ci.yml) runs lint, applies every migration to an empty
+Postgres 16, and runs the full suite on each push to main.
 
 ---
 
@@ -306,6 +308,15 @@ The application runs as `akazi_app`, which owns nothing. Do not "fix" a
 permission error by connecting as the owner: an app connected as owner can
 disable the audit-log rules, which is the tampering the hash chain exists to
 detect.
+
+### Pay records are claims, not facts
+
+`paid_on` is the employer's claim; `worker_confirmed` is the worker's answer.
+`v_pay_accuracy` requires both plus on-time -- never relax it to count the
+employer's word alone, because the gap between claim and confirmation is the
+metric's entire reason to exist. Open a pay period when terms are known, not
+when money lands: a record created only at payment can never show the payment
+that failed to happen.
 
 ### Escalations -- the safeguard, not a reporting line
 

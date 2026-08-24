@@ -127,6 +127,76 @@
 </div>
 {% endif %}
 
+{% if p.status in ('active','completed') %}
+<div class="card">
+  <h2 style="margin-top:0">Pay</h2>
+  {% if pay_records %}
+  <table>
+    <tr><th>Period</th><th class="num">Net RWF</th><th>Due</th><th>Paid</th><th>Worker confirms</th><th></th></tr>
+    {% for pr in pay_records %}
+    <tr>
+      <td class="small">{{ pr.period_start }} – {{ pr.period_end }}</td>
+      <td class="num">{{ '{:,}'.format(pr.net_rwf) }}</td>
+      <td class="small muted">{{ pr.due_on or '—' }}</td>
+      <td>
+        {% if pr.paid_on %}<span class="pill {{ 'good' if pr.due_on and pr.paid_on <= pr.due_on else 'warn' }}">{{ pr.paid_on }}</span>
+        {% else %}
+        <form class="inline" method="post" action="/ui/pay/{{ pr.pay_id }}/paid">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <input type="date" name="paid_on" value="{{ today }}" style="width:auto">
+          <button class="secondary">Mark paid</button>
+        </form>
+        {% endif %}
+      </td>
+      <td>
+        {% if pr.worker_confirmed %}<span class="pill good">yes</span>
+        {% elif pr.paid_on %}
+        <form class="inline" method="post" action="/ui/pay/{{ pr.pay_id }}/confirm">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <button class="secondary">Received in full</button>
+        </form>
+        <form class="inline" method="post" action="/ui/pay/{{ pr.pay_id }}/confirm">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <input type="hidden" name="shortfall" value="true">
+          <button class="danger">Not in full</button>
+        </form>
+        {% else %}<span class="muted small">—</span>{% endif %}
+      </td>
+      <td></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  <form method="post" action="/ui/placements/{{ p.placement_id }}/pay">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <div class="grid">
+      <div><label>Period start</label>
+        <input type="date" name="period_start" value="{{ pay_suggestion.period_start if pay_suggestion else '' }}" required></div>
+      <div><label>Period end</label>
+        <input type="date" name="period_end" value="{{ pay_suggestion.period_end if pay_suggestion else '' }}" required></div>
+      <div><label>Gross (RWF)</label>
+        <input type="number" name="gross_rwf" min="1"
+               value="{{ pay_suggestion.gross_rwf if pay_suggestion and pay_suggestion.gross_rwf else '' }}" required></div>
+      <div><label>Due on</label><input type="date" name="due_on" value="{{ today }}" required></div>
+      <div><label>Deductions (RWF)</label><input type="number" name="deductions_rwf" min="0" value="0"></div>
+      <div><label>Method</label>
+        <select name="method"><option value="">—</option>
+          <option value="momo">MoMo</option><option value="cash">Cash</option>
+          <option value="bank">Bank</option></select></div>
+    </div>
+    {% if pay_suggestion and pay_suggestion.gross_rwf %}
+    <p class="small muted">Suggested from attendance: {{ pay_suggestion.days_present }} day(s)
+      present × RWF {{ '{:,}'.format(pay_suggestion.rate_rwf) }} =
+      RWF {{ '{:,}'.format(pay_suggestion.gross_rwf) }}. Correct it if the record is wrong.</p>
+    {% endif %}
+    <p><button>Record pay period</button></p>
+  </form>
+  <p class="small muted" style="margin-bottom:0">No money moves through Akazi.
+    This records what was agreed and what the worker says arrived — the gap
+    between the two is where pay disputes live.</p>
+</div>
+{% endif %}
+
 {% if attendance %}
 <div class="card">
   <h2 style="margin-top:0">Attendance</h2>

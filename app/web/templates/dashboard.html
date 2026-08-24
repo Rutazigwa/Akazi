@@ -101,6 +101,27 @@
   </div>
 </div>
 
+{% if overdue_pay %}
+<div class="card urgent">
+  <h2 style="margin-top:0">Pay overdue — {{ overdue_pay|length }}</h2>
+  <table>
+    <tr><th>Worker</th><th>Employer</th><th class="num">Net RWF</th><th>Was due</th><th class="num">Days late</th><th></th></tr>
+    {% for o in overdue_pay %}
+    <tr>
+      <td>{{ o.display_name }}</td>
+      <td>{{ o.business_name }}</td>
+      <td class="num">{{ '{:,}'.format(o.net_rwf) }}</td>
+      <td class="small muted">{{ o.due_on }}</td>
+      <td class="num"><span class="pill bad">{{ o.days_overdue }}d</span></td>
+      <td><a href="/ui/placements/{{ o.placement_id }}">Chase</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted" style="margin-bottom:0">Pay accuracy is a headline
+    metric — and someone is living on this money.</p>
+</div>
+{% endif %}
+
 <div class="card">
   <h2 style="margin-top:0">Follow-ups due ({{ follow_ups|length }})</h2>
   {% if follow_ups %}
