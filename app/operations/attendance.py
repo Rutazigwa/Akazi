@@ -69,7 +69,17 @@ def start_placement(
             f"placement {placement_id} is not in a startable state "
             f"(expected 'offered' or 'accepted')"
         )
-    return schedule_follow_ups(session, placement_id, started_on)
+
+    schedule = schedule_follow_ups(session, placement_id, started_on)
+
+    from app.messaging.events import (
+        on_follow_ups_scheduled,
+        on_placement_started,
+    )
+
+    on_placement_started(session, placement_id, started_on)
+    on_follow_ups_scheduled(session, placement_id, schedule)
+    return schedule
 
 
 def log_attendance(
@@ -151,6 +161,11 @@ def log_attendance(
         {"pid": str(placement_id)},
     ).scalar_one()
 
+    # Nothing further should go to someone who did not take up the work.
+    from app.messaging.events import on_placement_ended
+
+    on_placement_ended(session, placement_id, "no-show")
+
     return GuaranteeInvocation(
         failed_placement_id=placement_id,
         request_id=request_id,
@@ -216,6 +231,23 @@ def record_replacement(
             "replaces": str(failed_placement_id),
         },
     ).scalar_one()
+
+    from app.messaging.events import on_placement_offered, on_replacement_sent
+
+    on_placement_offered(session, new_id)
+
+    invoked_at = session.execute(
+        text(
+            "SELECT min(confirmed_at) FROM attendance "
+            "WHERE placement_id = :pid AND NOT present"
+        ),
+        {"pid": str(failed_placement_id)},
+    ).scalar_one_or_none()
+    if invoked_at is not None:
+        on_replacement_sent(
+            session, failed_placement_id, new_id, invoked_at + GUARANTEE_WINDOW
+        )
+
     return new_id
 
 

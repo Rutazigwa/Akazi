@@ -182,6 +182,20 @@ Known gaps, so nobody discovers them at the wrong moment:
 - **No account recovery without an admin.** If the only owner loses both their
   password and their phone, recovery means direct database access.
 
+## Message dispatch
+
+```bash
+*/5 * * * *  cd /app && python scripts/dispatch_messages.py
+```
+
+Safe to run concurrently and safe to re-run. Until a live provider is
+configured it records instead of sending — run the pilot's first week that way
+and read `scripts/dispatch_messages.py --summary` plus the message bodies before
+anything reaches a real person.
+
+Nothing is sent between 21:00 and 07:00 Kigali; messages due then are deferred to
+07:00 rather than dropped.
+
 ## Publish the audit chain head
 
 `GET /staff/audit/integrity` returns `head_hash`. Record it somewhere the server

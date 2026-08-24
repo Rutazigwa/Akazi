@@ -160,6 +160,12 @@ def offer_placement(
     ).scalar_one()
 
     _refresh_request_status(session, request_id)
+
+    # Inside the same transaction: a rolled-back offer takes its message with
+    # it, and the candidate is told the pay before they accept.
+    from app.messaging.events import on_placement_offered
+
+    on_placement_offered(session, placement_id)
     return placement_id
 
 
@@ -185,6 +191,11 @@ def respond_to_offer(
             f"placement {placement_id} is not awaiting a response"
         )
     _refresh_request_status(session, updated)
+
+    if not accepted:
+        from app.messaging.events import on_placement_ended
+
+        on_placement_ended(session, placement_id, "offer declined")
 
 
 def _home_coords(session: Session, candidate_id: UUID):

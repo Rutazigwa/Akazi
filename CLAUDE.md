@@ -307,6 +307,22 @@ permission error by connecting as the owner: an app connected as owner can
 disable the audit-log rules, which is the tampering the hash chain exists to
 detect.
 
+### Messaging invariants
+
+- **Queue inside the causing transaction; send separately.** Never send inline:
+  a rollback would leave a message already delivered, and a retry would send it
+  twice.
+- **No phone numbers in the messages table.** Resolve at dispatch through
+  `message_recipient_phone()`, which audits the read. Copying numbers into the
+  outbox creates a second store of personal data outside the identity boundary.
+- **Suppressed is not failed.** No consent, no phone, erased record -- these are
+  facts about the recipient, not faults to retry. Counting them as failures
+  buries the real errors.
+- **Cancel queued messages when a placement ends.** A reminder for a job someone
+  declined sends them to the wrong place.
+- **Templates state pay net of transport.** Transparent pay before acceptance is
+  a legal requirement, and gross pay is not what someone takes home.
+
 ### Redirect targets
 
 Never redirect to a value taken from `Referer`, a query parameter, or a form

@@ -33,6 +33,7 @@ migrations/     Numbered SQL, applied in order. Blocks match the blueprint.
 app/config.py   Settings + the residency guard
 app/db.py       Engine, session scope, audit attribution
 app/matching/   The v1 matching engine, transport estimation, DB loading
+app/messaging/  Outbox, templates, providers, dispatcher
 app/operations/ Registration, work requests, offers, attendance, guarantee,
                 data subject rights
 app/auth.py     Passwords, sessions, lockout
@@ -346,6 +347,55 @@ what catches someone who disables those rules.
 access and time can recompute the whole chain. The defence against that is
 publishing `head_hash` somewhere off the server — once a hash exists elsewhere,
 no local rewrite of history can match it.
+
+## Messaging
+
+WhatsApp and SMS carry the offer, the shift reminder, and the day-1 / week-1 /
+day-30 / day-90 check-ins. One placement produces the whole schedule:
+
+```
+placement_offer           24 Aug 15:52   candidate
+employer_worker_assigned  24 Aug 15:52   employer
+shift_reminder            26 Aug 18:00   candidate    (evening before)
+followup_day_1            28 Aug 09:00   candidate
+followup_week_1           03 Sep 09:00   candidate
+followup_day_30           26 Sep 09:00   candidate
+followup_day_90           25 Nov 09:00   candidate
+```
+
+**It is an outbox, not a direct send.** The message is written in the same
+transaction as the thing that caused it — a rolled-back offer takes its message
+with it, and a failed send is a row to retry rather than a message nobody got.
+`scripts/dispatch_messages.py` runs on a cron; concurrent dispatchers divide the
+work via `FOR UPDATE SKIP LOCKED` rather than double-sending.
+
+**No phone numbers in the outbox.** The recipient is a `candidate_id`, resolved
+to a number at dispatch time through a `SECURITY DEFINER` function that writes an
+`audit_log` entry with `purpose: messaging`. Copying numbers into an operational
+queue would create a second store of personal data outside the identity
+boundary.
+
+**The offer states net pay after transport**, because gross pay is not what
+someone takes home and the gap is what kills a placement in week two:
+
+```
+Akazi: work offer from Isuku Cooperative.
+Morning cleaner on 27 Aug, 08:00–16:00.
+Pay: RWF 5,000 per day.
+Transport: about RWF 1150 per day, leaving about RWF 3850.
+Reply YES to accept or NO to decline. No fee to apply.
+```
+
+Three guards run before anything leaves: no consent record means suppressed, not
+sent; nothing goes out between 21:00 and 07:00 Kigali; and a placement that was
+declined, replaced or no-showed has its queued messages cancelled — a reminder
+for a job that is not yours is worse than no reminder.
+
+The default provider **records instead of sending**. A pilot can run its first
+week that way and read exactly what would have gone out before any of it reaches
+a real person. A live WhatsApp Business provider is deliberately not written: the
+API shape depends on which BSP you sign with, and guessing produces code that
+looks finished and has never run. It needs to satisfy one protocol method.
 
 ## The guarantee
 
