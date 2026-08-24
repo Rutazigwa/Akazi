@@ -11,13 +11,15 @@ from sqlalchemy import text
 
 from app.config import Residency, get_settings
 from app.db import session_scope
-from app.routers import auth, identity, operations
+from app.routers import auth, identity, operations, registry, requests
 
 settings = get_settings()
 
 app = FastAPI(title=settings.app_name, debug=settings.debug)
 app.include_router(auth.router)
 app.include_router(identity.router)
+app.include_router(registry.router)
+app.include_router(requests.router)
 app.include_router(operations.router)
 
 

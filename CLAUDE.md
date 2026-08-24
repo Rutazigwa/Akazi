@@ -16,8 +16,11 @@ app/config.py   Settings + the residency guard (Settings refuses to construct
                 without DATA_RESIDENCY -- do not add a default)
 app/db.py       Engine + session_scope(staff_id=...), which stamps app.staff_id
                 so the audit triggers can attribute the action
-app/matching/   The v1 matching engine. Pure functions, no DB access.
-app/operations/ Attendance, the reliability guarantee, follow-up scheduling
+app/matching/   engine.py is pure functions, no DB access. repository.py is
+                the seam that loads candidates and runs the filters.
+                transport.py estimates fares -- rates are PLACEHOLDERS.
+app/operations/ registry.py (employers, candidates, consent), requests.py
+                (work requests, offers), attendance.py, follow_ups.py
 app/auth.py     Passwords (argon2), DB-backed session tokens, lockout
 app/deps.py     db_session, current_staff, require_identity_access
 app/routers/    Coordinator HTTP endpoints -- all require a bearer session
@@ -238,6 +241,27 @@ Flipping a covered no-show to `replaced` would drop it out of
 `v_guarantee_invocations` and quietly inflate the reliability numbers -- the
 one metric the whole thesis rests on. The chain is the evidence; the status is
 the truth.
+
+### Matching invariants
+
+- **An offer re-runs the filters.** Never place someone straight from a
+  previously rendered match list -- consent, availability and transport can all
+  have changed since it was drawn.
+- **A missing transport estimate is None, not zero.** Zero silently disables
+  filter 2, which is the filter that prevents most 30-day dropouts.
+- **`match_reason` is written once, at offer time, and never recomputed.** An
+  employer may ask months later why a person was sent; "the algorithm would
+  pick them again today" is not an answer.
+- **Transport fare rates in `transport.py` are placeholders.** Calibrate from
+  real receipts before the pilot reports any net-earnings figure.
+
+### Consent ordering -- fixed bug, do not reintroduce
+
+`v_current_consent` must order by `captured_at DESC, recorded_seq DESC`.
+Ordering by `captured_at` alone is wrong: it defaults to `now()`, which in
+PostgreSQL is *transaction* start time, so rows written in one transaction tie
+and `DISTINCT ON` resolves the tie arbitrarily -- a withdrawal could be ignored
+and the candidate stay matchable. See migration 011 and tests/test_consent.py.
 
 ### Auth invariants -- do not relax these
 

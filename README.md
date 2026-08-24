@@ -19,7 +19,7 @@ docker compose up -d db                 # Postgres 16
 
 python -m venv .venv && .venv/bin/pip install -e '.[dev]'
 cp .env.example .env                    # set DATA_RESIDENCY
-.venv/bin/python -m pytest              # 80 tests
+.venv/bin/python -m pytest              # 99 tests
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -32,8 +32,8 @@ see [Data residency](#data-residency).
 migrations/     Numbered SQL, applied in order. Blocks match the blueprint.
 app/config.py   Settings + the residency guard
 app/db.py       Engine, session scope, audit attribution
-app/matching/   The v1 matching engine (sequential filters)
-app/operations/ Attendance, the guarantee, follow-up scheduling
+app/matching/   The v1 matching engine, transport estimation, DB loading
+app/operations/ Registration, work requests, offers, attendance, guarantee
 app/auth.py     Passwords, sessions, lockout
 app/deps.py     Session + authenticated-staff dependencies
 app/routers/    Coordinator HTTP endpoints
@@ -100,7 +100,32 @@ a test named for it.
 
 `match_candidates` returns rejections as well as matches. A request that fills
 nobody is a demand signal, and the reason tells you whether the problem is pay,
-transport, skills or supply.
+transport, skills or supply. `GET /work-requests/{id}/matches` returns both:
+
+```
+MATCH   Aline U.       matched on: availability, 11-min commute,
+                       net RWF 3850/day after transport
+EXCLUDE Beatrice M.    [transport_viability] transport RWF 7600/day exceeds
+                       the candidate's ceiling of RWF 2000
+EXCLUDE Claude N.      [hard_exclusion] availability does not cover 08:00-16:00
+```
+
+An offer **re-runs the filters** rather than trusting the list the coordinator is
+looking at. Someone who withdrew consent five minutes ago must not be placeable
+from a stale screen.
+
+### Transport estimates are provisional
+
+`app/matching/transport.py` converts straight-line distance to a moto fare with a
+base plus per-kilometre rate. **Those rates are placeholders.** Real Kigali fares
+vary by route, time, weather and negotiation, and straight-line distance
+understates a hilly city. Calibrate against receipts from the first cohort and
+replace the model; until then, confirm the fare with the candidate before
+offering.
+
+A candidate with no home coordinates gets **no** estimate — `None`, never zero.
+Zero would silently disable the filter that prevents most 30-day dropouts, which
+is why capturing home location at registration matters.
 
 ## Authentication
 
