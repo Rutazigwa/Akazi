@@ -26,7 +26,10 @@ deploy/         Production stack. docs/DEPLOYMENT.md is the runbook.
 app/auth.py     Passwords (argon2), DB-backed session tokens, lockout
 app/mfa.py      TOTP: enrolment, per-session elevation, replay guard
 app/deps.py     db_session, current_staff, require_identity_access
-app/routers/    Coordinator HTTP endpoints -- all require a bearer session
+app/routers/    JSON API -- all require a bearer session
+app/web/        Admin UI: Jinja templates, cookie session, CSRF. No build
+                step and no JS framework -- keep it that way unless the
+                blueprint's "do not over-engineer" stops being true.
 app/main.py     FastAPI admin app (coordinators and owner only)
 tests/          Filter behaviour and the residency guard
 scripts/        migrate.sh
@@ -280,6 +283,18 @@ a data-protection request is the opposite of compliance.
 
 `erase_candidate_identity()` refuses to run when `app.staff_id` is unset. It is
 the one operation whose actor cannot be reconstructed later.
+
+### Web UI invariants
+
+- **Every state-changing form carries a CSRF token**, checked against the
+  session. The bearer API does not need this; the cookie UI does, because a
+  browser sends a cookie on any request it is tricked into making.
+- **Server-side checks are not optional because the template hid the form.**
+  The candidate registration handler re-checks identity access and MFA -- a
+  hidden form is a UI affordance, never a control.
+- **A missing transport estimate must not render like a zero fare.** They are
+  opposite facts: a candidate with no home location passes the transport
+  filter by default, and the coordinator has to see that before offering.
 
 ### Auth invariants -- do not relax these
 

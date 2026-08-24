@@ -48,6 +48,7 @@ class AuthenticatedStaff:
     role: str
     can_view_identity: bool
     session_id: UUID
+    csrf_token: str | None = None
     # Whether a second factor was presented on THIS session, and whether the
     # account has one at all. Identity access requires both.
     mfa_satisfied: bool = False
@@ -222,8 +223,9 @@ def _issue_token(
         text(
             """
             INSERT INTO staff_sessions (staff_id, token_sha256, expires_at,
-                                        user_agent)
-            VALUES (:sid, :digest, now() + CAST(:lifetime AS interval), :ua)
+                                        user_agent, csrf_token)
+            VALUES (:sid, :digest, now() + CAST(:lifetime AS interval), :ua,
+                    :csrf)
             """
         ),
         {
@@ -231,6 +233,9 @@ def _issue_token(
             "digest": _token_digest(token),
             "lifetime": f"{int(SESSION_LIFETIME.total_seconds())} seconds",
             "ua": (user_agent or "")[:200] or None,
+            # Only the browser UI uses this; the JSON API sends a bearer token,
+            # which a browser never attaches on its own.
+            "csrf": secrets.token_urlsafe(32),
         },
     )
     return token
@@ -248,7 +253,7 @@ def authenticate(session: Session, token: str) -> AuthenticatedStaff:
             SELECT s.staff_id, s.full_name, s.role::text AS role,
                    s.can_view_identity, s.must_change_password,
                    (s.totp_enrolled_at IS NOT NULL) AS mfa_enrolled,
-                   ss.session_id, ss.mfa_satisfied
+                   ss.session_id, ss.mfa_satisfied, ss.csrf_token
               FROM staff_sessions ss
               JOIN staff s ON s.staff_id = ss.staff_id
              WHERE ss.token_sha256 = :digest
@@ -277,6 +282,7 @@ def authenticate(session: Session, token: str) -> AuthenticatedStaff:
         role=row["role"],
         can_view_identity=row["can_view_identity"],
         session_id=row["session_id"],
+        csrf_token=row["csrf_token"],
         mfa_satisfied=row["mfa_satisfied"],
         mfa_enrolled=row["mfa_enrolled"],
         must_change_password=row["must_change_password"],

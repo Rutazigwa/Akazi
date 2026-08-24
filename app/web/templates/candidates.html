@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Candidates · Akazi{% endblock %}
+{% block body %}
+<h1>Candidates</h1>
+
+{% if staff.can_view_identity and staff.mfa_satisfied %}
+<div class="card">
+  <h2 style="margin-top:0">Register</h2>
+  <p class="small muted">
+    Coordinator-entered, from WhatsApp or in person. Consent is captured here —
+    without it the person is invisible to matching.
+  </p>
+  <form method="post" action="/ui/candidates">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <div class="grid">
+      <div><label for="legal_first_name">Legal first name</label><input id="legal_first_name" name="legal_first_name" required></div>
+      <div><label for="legal_last_name">Legal last name</label><input id="legal_last_name" name="legal_last_name" required></div>
+      <div><label for="date_of_birth">Date of birth</label><input id="date_of_birth" name="date_of_birth" type="date" required></div>
+      <div><label for="phone_primary">Phone</label><input id="phone_primary" name="phone_primary" required placeholder="+250…"></div>
+      <div><label for="national_id">National ID</label><input id="national_id" name="national_id"></div>
+      <div><label for="display_name">Display name</label><input id="display_name" name="display_name" required></div>
+      <div>
+        <label for="gender">Gender</label>
+        <select id="gender" name="gender"><option value="">—</option>
+          <option value="F">F</option><option value="M">M</option><option value="X">X</option></select>
+      </div>
+      <div><label for="district">District</label><input id="district" name="district" required></div>
+      <div><label for="sector">Sector</label><input id="sector" name="sector" required></div>
+      <div><label for="home_lat">Home latitude</label><input id="home_lat" name="home_lat" type="number" step="any"></div>
+      <div><label for="home_lng">Home longitude</label><input id="home_lng" name="home_lng" type="number" step="any"></div>
+      <div><label for="max_commute_rwf">Max daily transport (RWF)</label><input id="max_commute_rwf" name="max_commute_rwf" type="number" min="0"></div>
+      <div>
+        <label for="consent_captured_via">Consent captured via</label>
+        <select id="consent_captured_via" name="consent_captured_via">
+          <option value="paper">Paper</option><option value="whatsapp">WhatsApp</option>
+        </select>
+      </div>
+      <div>
+        <label for="accepts_after_dark">Accepts shifts ending after dark?</label>
+        <select id="accepts_after_dark" name="accepts_after_dark">
+          <option value="false">No</option><option value="true">Yes — explicitly agreed</option>
+        </select>
+      </div>
+    </div>
+
+    <fieldset style="border:1px solid var(--line); border-radius:6px; margin-top:1rem;">
+      <legend class="small muted">Availability</legend>
+      <p class="small muted" style="margin-top:0">
+        Without this the candidate is excluded from every shift that has hours —
+        the availability filter has nothing to check against.
+      </p>
+      <div class="grid">
+        <div>
+          <label for="avail_days">Days</label>
+          <select id="avail_days" name="avail_days" multiple size="7" style="height:auto">
+            <option value="0" selected>Monday</option>
+            <option value="1" selected>Tuesday</option>
+            <option value="2" selected>Wednesday</option>
+            <option value="3" selected>Thursday</option>
+            <option value="4" selected>Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
+        </div>
+        <div>
+          <label for="avail_start">Available from</label>
+          <input id="avail_start" name="avail_start" type="time" value="06:00">
+          <label for="avail_end">Available until</label>
+          <input id="avail_end" name="avail_end" type="time" value="18:00">
+        </div>
+      </div>
+    </fieldset>
+
+    <p><button>Register</button></p>
+  </form>
+</div>
+{% else %}
+<div class="card">
+  <p class="small muted">
+    Registering a candidate writes a national ID number, so it needs identity
+    access with a second factor on this session.
+    {% if staff.can_view_identity %}<a href="/ui/mfa">Verify a code</a>.{% else %}
+    Your account does not have identity access.{% endif %}
+  </p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Registry ({{ candidates|length }})</h2>
+  <table>
+    <tr><th>Name</th><th>District</th><th>Status</th><th>Consent</th></tr>
+    {% for c in candidates %}
+    <tr>
+      <td>{{ c.display_name }}</td>
+      <td class="small muted">{{ c.district }} / {{ c.sector }}</td>
+      <td><span class="pill {{ 'good' if c.status == 'placed' else 'warn' }}">{{ c.status }}</span></td>
+      <td>{% if c.placement_consent %}<span class="pill good">yes</span>
+          {% else %}<span class="pill bad">none</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">Operational profiles only — no legal names or ID
+    numbers on this screen, whatever your access.</p>
+</div>
+{% endblock %}

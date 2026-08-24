@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Work requests · Akazi{% endblock %}
+{% block body %}
+<h1>Work requests</h1>
+
+<div class="card">
+  <h2 style="margin-top:0">Post a shift</h2>
+  <form method="post" action="/ui/requests">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <div class="grid">
+      <div>
+        <label for="employer_id">Employer</label>
+        <select id="employer_id" name="employer_id" required>
+          {% for e in employers %}
+          <option value="{{ e.employer_id }}">{{ e.business_name }}{% if e.is_cooperative %} (coop){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div><label for="title">Role</label><input id="title" name="title" required></div>
+      <div>
+        <label for="work_type">Type</label>
+        <select id="work_type" name="work_type">
+          <option value="shift">Shift</option><option value="internship">Internship</option>
+          <option value="apprenticeship">Apprenticeship</option>
+          <option value="fixed_term">Fixed term</option><option value="project">Project</option>
+        </select>
+      </div>
+      <div><label for="headcount">Headcount</label><input id="headcount" name="headcount" type="number" min="1" value="1" required></div>
+      <div><label for="starts_on">Starts</label><input id="starts_on" name="starts_on" type="date" value="{{ today }}" required></div>
+      <div><label for="shift_start">Shift start</label><input id="shift_start" name="shift_start" type="time"></div>
+      <div><label for="shift_end">Shift end</label><input id="shift_end" name="shift_end" type="time"></div>
+      <div><label for="pay_rwf">Pay (RWF)</label><input id="pay_rwf" name="pay_rwf" type="number" min="1" required></div>
+      <div>
+        <label for="pay_unit">Per</label>
+        <select id="pay_unit" name="pay_unit">
+          <option value="day">Day</option><option value="hour">Hour</option>
+          <option value="month">Month</option><option value="task">Task</option>
+        </select>
+      </div>
+      <div>
+        <label for="transport_covered">Transport covered?</label>
+        <select id="transport_covered" name="transport_covered">
+          <option value="false">No</option><option value="true">Yes</option>
+        </select>
+      </div>
+    </div>
+    <p class="small muted">Transport cover is not a detail: it decides who can
+      afford to take the work, and it waives the 30%-of-pay filter.</p>
+    <p><button>Post</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Open ({{ requests|length }})</h2>
+  {% if requests %}
+  <table>
+    <tr><th>Employer</th><th>Role</th><th>Starts</th><th class="num">Pay</th><th class="num">Filled</th><th></th></tr>
+    {% for r in requests %}
+    <tr>
+      <td>{{ r.business_name }}</td><td>{{ r.title }}</td>
+      <td class="small muted">{{ r.starts_on }}</td>
+      <td class="num">{{ '{:,}'.format(r.pay_rwf) }}/{{ r.pay_unit }}</td>
+      <td class="num">{{ r.filled }}/{{ r.headcount }}</td>
+      <td><a href="/ui/requests/{{ r.request_id }}">Match</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted small">Nothing open.</p>{% endif %}
+</div>
+{% endblock %}

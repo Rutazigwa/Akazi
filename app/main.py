@@ -6,7 +6,8 @@ no employer surface yet -- see the build order in CLAUDE.md.
 
 from __future__ import annotations
 
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 
 from app.config import Residency, get_settings
@@ -20,6 +21,8 @@ from app.routers import (
     requests,
     staff,
 )
+from app.web import router as web_router
+from app.web.deps import LoginRequired, redirect_to_login
 
 settings = get_settings()
 
@@ -30,7 +33,19 @@ app.include_router(data_rights.router)
 app.include_router(registry.router)
 app.include_router(requests.router)
 app.include_router(staff.router)
+app.include_router(web_router.router)
 app.include_router(operations.router)
+
+
+@app.exception_handler(LoginRequired)
+def _login_required(request: Request, exc: LoginRequired):
+    """Send a browser to the sign-in page instead of a bare 401 body."""
+    return redirect_to_login(request)
+
+
+@app.get("/")
+def root():
+    return RedirectResponse("/ui/", status_code=307)
 
 
 @app.get("/health")

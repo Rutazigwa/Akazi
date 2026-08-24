@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ request_row.title }} · Akazi{% endblock %}
+{% block body %}
+<p class="small"><a href="/ui/requests">← Work requests</a></p>
+<h1>{{ request_row.title }} — {{ request_row.business_name }}</h1>
+<p class="muted small">
+  {{ request_row.headcount }} needed · starts {{ request_row.starts_on }} ·
+  {{ '{:,}'.format(request_row.pay_rwf) }} RWF/{{ request_row.pay_unit }}
+  {% if request_row.shift_start %} · {{ request_row.shift_start.strftime('%H:%M') }}–{{ request_row.shift_end.strftime('%H:%M') }}{% endif %}
+  {% if request_row.transport_covered %} · <span class="pill good">transport covered</span>{% endif %}
+</p>
+
+<div class="card">
+  <h2 style="margin-top:0">Matched ({{ matches|length }})</h2>
+  {% if matches %}
+  <table>
+    <tr><th>Candidate</th><th>Why</th><th class="num">Transport</th><th></th></tr>
+    {% for m in matches %}
+    <tr>
+      <td>{{ m.display_name }}</td>
+      {# The reason is the point. A coordinator has to be able to read this
+         aloud to an employer who asks "why this person". #}
+      <td class="reason">{{ m.reason }}</td>
+      {# Zero transport and no estimate at all are opposite facts and must not
+         look alike. A candidate with no home location on file passes the
+         transport filter by default -- the coordinator has to see that. #}
+      <td class="num small">
+        {% if m.est_commute_min is none %}
+          <span class="pill warn">no estimate</span>
+          <br><span class="muted">home location missing</span>
+        {% elif m.est_transport_rwf == 0 %}
+          <span class="pill good">walkable</span>
+          <br><span class="muted">{{ m.est_commute_min }} min</span>
+        {% else %}
+          {{ '{:,}'.format(m.est_transport_rwf) }} RWF
+          <br><span class="muted">{{ m.est_commute_min }} min</span>
+        {% endif %}
+      </td>
+      <td>
+        <form class="inline" method="post" action="/ui/requests/{{ request_row.request_id }}/offer">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <input type="hidden" name="candidate_id" value="{{ m.candidate_id }}">
+          <button>Offer</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Nobody matches. The exclusions below say why — that is the
+    demand signal, not an error.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Excluded ({{ rejections|length }})</h2>
+  {% if rejections %}
+  <table>
+    <tr><th>Candidate</th><th>Filter</th><th>Reason</th></tr>
+    {% for r in rejections %}
+    <tr>
+      <td>{{ r.display_name }}</td>
+      <td><span class="pill {{ 'bad' if r.filter == 'hard_exclusion' else 'warn' }}">{{ r.filter.replace('_',' ') }}</span></td>
+      <td class="reason">{{ r.reason }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted small">Nobody excluded.</p>{% endif %}
+</div>
+
+{% if placements %}
+<div class="card">
+  <h2 style="margin-top:0">Already offered</h2>
+  <table>
+    <tr><th>Candidate</th><th>Status</th><th></th></tr>
+    {% for p in placements %}
+    <tr>
+      <td>{{ p.display_name }}</td>
+      <td><span class="pill {{ 'good' if p.status in ('accepted','active','completed') else ('bad' if p.status in ('no_show','declined','terminated') else 'warn') }}">{{ p.status }}</span></td>
+      <td><a href="/ui/placements/{{ p.placement_id }}">Open</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

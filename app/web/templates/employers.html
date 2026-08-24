@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Employers · Akazi{% endblock %}
+{% block body %}
+<h1>Employers</h1>
+
+<div class="card">
+  <h2 style="margin-top:0">Register</h2>
+  <form method="post" action="/ui/employers">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <div class="grid">
+      <div><label for="business_name">Business name</label><input id="business_name" name="business_name" required></div>
+      <div><label for="sector">Sector</label><input id="sector" name="sector" required placeholder="cleaning, retail…"></div>
+      <div><label for="district">District</label><input id="district" name="district" required></div>
+      <div><label for="tin">TIN</label><input id="tin" name="tin"></div>
+      <div><label for="site_lat">Site latitude</label><input id="site_lat" name="site_lat" type="number" step="any" placeholder="-1.9550"></div>
+      <div><label for="site_lng">Site longitude</label><input id="site_lng" name="site_lng" type="number" step="any" placeholder="30.1150"></div>
+      <div>
+        <label for="is_cooperative">Cooperative?</label>
+        <select id="is_cooperative" name="is_cooperative">
+          <option value="false">No</option><option value="true">Yes</option>
+        </select>
+      </div>
+    </div>
+    <p class="small muted">Site coordinates drive the transport estimate. Without
+      them, the filter that prevents most 30-day dropouts cannot run.</p>
+    <p><button>Register</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">All ({{ employers|length }})</h2>
+  <table>
+    <tr><th>Business</th><th>Sector</th><th>District</th><th>Tier</th><th></th></tr>
+    {% for e in employers %}
+    <tr>
+      <td>{{ e.business_name }}{% if e.is_cooperative %} <span class="pill good">coop</span>{% endif %}</td>
+      <td class="small muted">{{ e.sector }}</td>
+      <td class="small muted">{{ e.district }}</td>
+      <td><span class="pill {{ 'good' if e.tier in ('active','pilot') else 'warn' }}">{{ e.tier }}</span></td>
+      <td>
+        {% if e.tier == 'prospect' %}
+        <form class="inline" method="post" action="/ui/employers/{{ e.employer_id }}/tier">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <input type="hidden" name="tier" value="active">
+          <button class="secondary">Mark active</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">A new employer is a prospect. An interview is not a
+    relationship — "active employers" only counts the real ones.</p>
+</div>
+{% endblock %}

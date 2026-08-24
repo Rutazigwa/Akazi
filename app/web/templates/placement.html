@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Placement · Akazi{% endblock %}
+{% block body %}
+<p class="small"><a href="/ui/">← Dashboard</a></p>
+<h1>{{ p.display_name }} — {{ p.business_name }}</h1>
+<p class="muted small">
+  {{ p.title }} · <span class="pill {{ 'good' if p.status in ('accepted','active','completed') else ('bad' if p.status in ('no_show','declined','terminated') else 'warn') }}">{{ p.status }}</span>
+  · {{ '{:,}'.format(p.agreed_pay_rwf) }} RWF/{{ p.pay_unit }}
+  {% if p.est_transport_rwf %} · transport {{ '{:,}'.format(p.est_transport_rwf) }} RWF/day
+    (net {{ '{:,}'.format(p.agreed_pay_rwf - p.est_transport_rwf) }}){% endif %}
+</p>
+{% if p.match_reason %}
+<p class="reason">Matched on record: {{ p.match_reason }}</p>
+{% endif %}
+
+{% if p.status == 'offered' %}
+<div class="card">
+  <h2 style="margin-top:0">Offer outstanding</h2>
+  <p class="small muted">Pay and transport were shown before acceptance.</p>
+  <form class="inline" method="post" action="/ui/placements/{{ p.placement_id }}/respond">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <input type="hidden" name="accepted" value="true">
+    <button>Accepted</button>
+  </form>
+  <form class="inline" method="post" action="/ui/placements/{{ p.placement_id }}/respond">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <input type="hidden" name="accepted" value="false">
+    <button class="secondary">Declined</button>
+  </form>
+</div>
+{% endif %}
+
+{% if p.status == 'accepted' %}
+<div class="card">
+  <h2 style="margin-top:0">Start the placement</h2>
+  <p class="small muted">This lays down the day-1, week-1, day-30 and day-90 check-ins.</p>
+  <form method="post" action="/ui/placements/{{ p.placement_id }}/start">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <label for="started_on">First day</label>
+    <input id="started_on" name="started_on" type="date" value="{{ today }}" required style="max-width:200px">
+    <p><button>Start</button></p>
+  </form>
+</div>
+{% endif %}
+
+{% if p.status in ('active', 'no_show') %}
+<div class="card">
+  <h2 style="margin-top:0">Log a day</h2>
+  <form method="post" action="/ui/placements/{{ p.placement_id }}/attendance">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <div class="grid">
+      <div>
+        <label for="work_date">Date</label>
+        <input id="work_date" name="work_date" type="date" value="{{ today }}" required>
+      </div>
+      <div>
+        <label for="present">Turned up?</label>
+        <select id="present" name="present">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+      <div>
+        <label for="confirmed_by">Confirmed by</label>
+        <select id="confirmed_by" name="confirmed_by">
+          <option value="employer">Employer</option>
+          <option value="coordinator">Coordinator</option>
+          <option value="worker">Worker</option>
+        </select>
+      </div>
+      <div>
+        <label for="hours_worked">Hours</label>
+        <input id="hours_worked" name="hours_worked" type="number" step="0.25" min="0">
+      </div>
+    </div>
+    <label for="absence_reason">Reason, if absent <span class="muted">(required — it feeds the follow-up)</span></label>
+    <input id="absence_reason" name="absence_reason">
+    <p><button>Record</button></p>
+  </form>
+</div>
+{% endif %}
+
+{% if p.status == 'no_show' and not replacement %}
+<div class="card urgent">
+  <h2 style="margin-top:0">Cover this shift</h2>
+  <p class="small">
+    The guarantee is running. {{ eligible|length }} candidate(s) pass the filters
+    for this request right now.
+  </p>
+  {% if eligible %}
+  <table>
+    <tr><th>Candidate</th><th>Why</th><th></th></tr>
+    {% for m in eligible %}
+    <tr>
+      <td>{{ m.display_name }}</td>
+      <td class="reason">{{ m.reason }}</td>
+      <td>
+        <form class="inline" method="post" action="/ui/placements/{{ p.placement_id }}/replace">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <input type="hidden" name="candidate_id" value="{{ m.candidate_id }}">
+          <input type="hidden" name="match_reason" value="{{ m.reason }}">
+          <button>Send them</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Nobody passes the filters. This is the case the guarantee was
+    priced for — widen the pool or cover it yourself.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if replacement %}
+<div class="card">
+  <h2 style="margin-top:0">Covered</h2>
+  <p class="small">
+    Replaced by <a href="/ui/placements/{{ replacement.placement_id }}">{{ replacement.display_name }}</a>,
+    offered {{ replacement.offered_at.strftime('%d %b %H:%M') }}.
+    {% if hours_to_fill is not none %}
+      <span class="pill {{ 'good' if hours_to_fill <= 24 else 'bad' }}">{{ '%.1f'|format(hours_to_fill) }}h to fill</span>
+    {% endif %}
+  </p>
+  <p class="small muted">This placement stays <code>no_show</code> — that is what
+    happened. The chain is the evidence that we covered it.</p>
+</div>
+{% endif %}
+
+{% if attendance %}
+<div class="card">
+  <h2 style="margin-top:0">Attendance</h2>
+  <table>
+    <tr><th>Date</th><th>Present</th><th class="num">Hours</th><th>Confirmed by</th><th>Reason</th></tr>
+    {% for a in attendance %}
+    <tr>
+      <td>{{ a.work_date }}</td>
+      <td>{% if a.present %}<span class="pill good">yes</span>{% else %}<span class="pill bad">no</span>{% endif %}</td>
+      <td class="num">{{ a.hours_worked or '' }}</td>
+      <td class="small muted">{{ a.confirmed_by }}</td>
+      <td class="small muted">{{ a.absence_reason or '' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if follow_ups %}
+<div class="card">
+  <h2 style="margin-top:0">Check-ins</h2>
+  <table>
+    <tr><th>Checkpoint</th><th>Due</th><th>Outcome</th><th></th></tr>
+    {% for f in follow_ups %}
+    <tr>
+      <td>{{ f.checkpoint.replace('_',' ') }}</td>
+      <td class="small muted">{{ f.due_on }}</td>
+      <td>
+        {% if f.completed_at %}
+          {% if f.still_working %}<span class="pill good">still working</span>
+          {% else %}<span class="pill bad">left</span>{% endif %}
+          {% if f.issue_flag %}<span class="pill warn">{{ f.issue_flag }}</span>{% endif %}
+        {% else %}<span class="muted small">pending</span>{% endif %}
+      </td>
+      <td>
+        {% if not f.completed_at %}
+        <form class="inline" method="post" action="/ui/follow-ups/{{ f.follow_up_id }}/complete">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <select name="still_working" style="width:auto">
+            <option value="true">Still working</option>
+            <option value="false">Left</option>
+          </select>
+          <select name="issue_flag" style="width:auto">
+            <option value="">No issue</option>
+            <option value="pay">Pay</option>
+            <option value="safety">Safety</option>
+            <option value="harassment">Harassment</option>
+            <option value="transport">Transport</option>
+            <option value="hours">Hours</option>
+          </select>
+          <button>Record</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

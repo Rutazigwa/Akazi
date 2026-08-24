@@ -19,7 +19,7 @@ docker compose up -d db                 # Postgres 16
 
 python -m venv .venv && .venv/bin/pip install -e '.[dev]'
 cp .env.example .env                    # set DATA_RESIDENCY
-.venv/bin/python -m pytest              # 154 tests
+.venv/bin/python -m pytest              # 167 tests
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -38,7 +38,8 @@ app/operations/ Registration, work requests, offers, attendance, guarantee,
 app/auth.py     Passwords, sessions, lockout
 app/mfa.py      TOTP enrolment, session elevation, replay guard
 app/deps.py     Session + authenticated-staff dependencies
-app/routers/    Coordinator HTTP endpoints
+app/routers/    JSON API endpoints
+app/web/        The admin UI — server-rendered templates, cookie session, CSRF
 tests/          Filters, residency guard, and DB-backed operations tests
 scripts/        migrate.sh, testdb.sh, create_staff.py, backup.sh
 deploy/         Production stack: Postgres + app + Caddy (automatic TLS)
@@ -130,6 +131,28 @@ offering.
 A candidate with no home coordinates gets **no** estimate — `None`, never zero.
 Zero would silently disable the filter that prevents most 30-day dropouts, which
 is why capturing home location at registration matters.
+
+## The admin UI
+
+`/ui` — server-rendered HTML, one stylesheet, no build step and no JavaScript
+framework. The blueprint's instruction for this layer was "low traffic, high data
+density, do not over-engineer", and a handful of coordinators on laptops is
+exactly the case where a SPA costs more than it returns.
+
+The screens follow the operation rather than the schema:
+
+- **Dashboard** — open guarantees first, with the 24-hour clock and a *Cover it*
+  link; then the pilot scorecard against its targets; then check-ins due and open
+  requests.
+- **Work request → matches** — ranked candidates each with the sentence a
+  coordinator reads back to the employer, and every exclusion with its reason.
+- **Placement** — accept, start, log a day, and for a no-show, the candidates who
+  can cover it *right there*, without navigating away while the clock runs.
+
+The UI authenticates with a cookie rather than a bearer token, so CSRF applies to
+it in a way it does not to the JSON API. Two defences: `SameSite=Strict` on an
+`HttpOnly` cookie, and a per-session CSRF token on every state-changing form. The
+cookie is `Secure` in every deployment except local development.
 
 ## Authentication
 
