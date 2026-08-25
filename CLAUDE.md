@@ -254,6 +254,15 @@ the truth.
 
 ### Matching invariants
 
+- **Double-booking is prevented by checking overlapping placements, never by
+  candidate status.** Status is a summary and it drifted once already, with the
+  result that an actively-placed worker could be sent to two employers for the
+  same hours. `refresh_candidate_status` keeps the summary honest for display
+  and reporting; it is not the control.
+- **Do not exclude `placed` candidates from the pool.** Shift work is the
+  point. Excluding them would also hide them from the rejection list, so a
+  coordinator would not see why nobody matched.
+
 - **An offer re-runs the filters.** Never place someone straight from a
   previously rendered match list -- consent, availability and transport can all
   have changed since it was drawn.

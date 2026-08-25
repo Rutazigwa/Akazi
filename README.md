@@ -103,7 +103,8 @@ Five sequential filters, in `app/matching/engine.py`. Not weights, not a model �
 at pilot volume an employer asking "why this person" must get a straight answer,
 and a model trained on 40 placements is noise.
 
-1. **Hard exclusions** — age, consent, availability, required skill scores
+1. **Hard exclusions** — age, consent, **an overlapping commitment**,
+   availability, required skill scores
 2. **Transport viability** — under the candidate's ceiling, and under 30% of
    daily pay unless the employer covers transport
 3. **Safety** — after-dark shifts need covered transport or a recorded opt-in
@@ -111,6 +112,16 @@ and a model trained on 40 placements is noise.
    assessment score → commute time
 5. **Reason** — every match carries the sentence a coordinator reads to the
    employer
+
+**Nobody is offered work that overlaps work they already have.** Checked
+against actual placements rather than candidate status, because a status is a
+summary that drifts and this one had drifted: `candidates.status` never became
+`placed`, so an actively-placed worker stayed in the matching pool and could be
+sent to two employers for the same hours. Date ranges and shift windows are both
+compared; back-to-back shifts are a long day, not a clash.
+
+A placed worker is *not* removed from the pool — shift work is the point, and
+someone working Monday should be matchable for Tuesday.
 
 Filter 2 is the one that earns its keep. The blueprint's example — RWF 3,000/day
 against RWF 1,600 in moto fare — is 53% of pay and is rejected outright; there is

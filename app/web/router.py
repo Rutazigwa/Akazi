@@ -29,10 +29,12 @@ from app.messaging.inbound import needs_attention
 from app.mfa import MFAError, elevate_session
 from app.operations.attendance import (
     AttendanceError,
+    complete_placement,
     log_attendance,
     open_guarantees,
     record_replacement,
     start_placement,
+    terminate_placement,
 )
 from app.employer_auth import invite_contact
 from app.operations.escalations import (
@@ -977,6 +979,30 @@ def attendance(
         f"No-show recorded — cover this shift by "
         f"{invocation.due_by.strftime('%H:%M on %d %b')}",
         "err",
+    )
+
+
+@router.post("/placements/{placement_id}/end")
+def end_placement(
+    placement_id: UUID,
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    outcome: Annotated[str, Form()],
+    reason: Annotated[str, Form()] = "",
+):
+    """Close a placement: finished as agreed, or ended early with a reason."""
+    try:
+        if outcome == "completed":
+            complete_placement(session, placement_id)
+        else:
+            terminate_placement(session, placement_id, reason)
+    except AttendanceError as exc:
+        return _back(f"/ui/placements/{placement_id}", str(exc), "err")
+    return _back(
+        f"/ui/placements/{placement_id}",
+        "Completed — the worker is available for new shifts"
+        if outcome == "completed"
+        else "Ended early — recorded, and the worker is available again",
     )
 
 

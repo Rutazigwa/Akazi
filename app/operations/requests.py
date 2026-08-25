@@ -192,6 +192,14 @@ def respond_to_offer(
         )
     _refresh_request_status(session, updated)
 
+    from app.operations.attendance import refresh_candidate_status
+
+    candidate_id = session.execute(
+        text("SELECT candidate_id FROM placements WHERE placement_id = :pid"),
+        {"pid": str(placement_id)},
+    ).scalar_one()
+    refresh_candidate_status(session, candidate_id)
+
     if not accepted:
         from app.messaging.events import on_placement_ended
 

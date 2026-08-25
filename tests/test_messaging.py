@@ -48,7 +48,24 @@ def sending_moment() -> datetime:
     return noon_kigali
 
 
+def quiet_moment() -> datetime:
+    """A moment that is after 'now' and inside quiet hours.
+
+    Computed for the same reason as sending_moment: 01:00 on the day of the
+    next noon can already be in the past when the suite runs after midnight
+    Kigali, and then nothing is due and the test proves nothing.
+    """
+    now = datetime.now(timezone.utc)
+    one_am = datetime.combine(
+        now.astimezone(KIGALI).date(), time(1, 0), tzinfo=KIGALI
+    ).astimezone(timezone.utc)
+    while one_am <= now:
+        one_am += timedelta(days=1)
+    return one_am
+
+
 MIDDAY = sending_moment()
+NIGHT = quiet_moment()
 
 
 def bodies(session) -> list[str]:
@@ -249,9 +266,7 @@ def test_nothing_is_sent_during_quiet_hours(session, make_placement, make_candid
     pid = make_placement(candidate_id=make_candidate())
     on_placement_offered(session, pid)
 
-    night = MIDDAY.astimezone(KIGALI).replace(hour=1, minute=0).astimezone(
-        timezone.utc
-    )
+    night = NIGHT
     provider = RecordingProvider()
     report = dispatch(session, provider, now=night)
 
@@ -265,10 +280,7 @@ def test_deferred_messages_are_rescheduled_to_the_morning(
 ):
     pid = make_placement(candidate_id=make_candidate())
     on_placement_offered(session, pid)
-    night = MIDDAY.astimezone(KIGALI).replace(hour=1, minute=0).astimezone(
-        timezone.utc
-    )
-    dispatch(session, RecordingProvider(), now=night)
+    dispatch(session, RecordingProvider(), now=NIGHT)
 
     when = session.execute(
         text("SELECT min(scheduled_for) FROM messages")

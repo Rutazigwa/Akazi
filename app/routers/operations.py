@@ -17,10 +17,12 @@ from sqlalchemy import text
 from app.deps import SessionDep, StaffDep
 from app.operations.attendance import (
     AttendanceError,
+    complete_placement,
     log_attendance,
     open_guarantees,
     record_replacement,
     start_placement,
+    terminate_placement,
 )
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
 
@@ -37,6 +39,12 @@ class LogAttendance(BaseModel):
     confirmed_by: str = Field(pattern="^(employer|coordinator|worker)$")
     hours_worked: float | None = None
     absence_reason: str | None = None
+
+
+class EndPlacement(BaseModel):
+    ended_on: date | None = None
+    # Required to terminate, ignored on completion.
+    reason: str | None = None
 
 
 class RecordReplacement(BaseModel):
@@ -108,6 +116,34 @@ def replacement(placement_id: UUID, body: RecordReplacement, session: SessionDep
     except AttendanceError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"placement_id": new_id, "replaces": placement_id}
+
+
+@router.post("/placements/{placement_id}/complete")
+def complete_the_placement(
+    placement_id: UUID, body: EndPlacement, session: SessionDep,
+    staff: StaffDep,
+):
+    """The work finished as agreed. Frees the worker for new matches."""
+    try:
+        complete_placement(session, placement_id, body.ended_on)
+    except AttendanceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"placement_id": placement_id, "status": "completed"}
+
+
+@router.post("/placements/{placement_id}/terminate")
+def terminate_the_placement(
+    placement_id: UUID, body: EndPlacement, session: SessionDep,
+    staff: StaffDep,
+):
+    """The work ended early. A reason is required."""
+    try:
+        terminate_placement(
+            session, placement_id, body.reason or "", body.ended_on
+        )
+    except AttendanceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"placement_id": placement_id, "status": "terminated"}
 
 
 @router.get("/guarantees/open")

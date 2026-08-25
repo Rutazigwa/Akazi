@@ -48,6 +48,117 @@ class AttendanceError(Exception):
     pass
 
 
+def refresh_candidate_status(session: Session, candidate_id: UUID) -> str | None:
+    """Recompute a candidate's status from the placements they actually hold.
+
+    Derived rather than assigned, so it cannot drift: any code path that
+    changes a placement calls this and the status follows. It never touches
+    'withdrawn' or 'inactive', which are decisions about the person rather
+    than summaries of their work.
+
+    Note that status is a display and reporting convenience -- matching
+    excludes double-booking by checking overlapping placements directly,
+    because a summary that goes stale would silently reopen that hole.
+    """
+    return session.execute(
+        text(
+            """
+            UPDATE candidates c
+               SET status = CASE
+                       WHEN EXISTS (SELECT 1 FROM placements p
+                                     WHERE p.candidate_id = c.candidate_id
+                                       AND p.status IN ('accepted','active'))
+                           THEN 'placed'::candidate_status
+                       WHEN EXISTS (SELECT 1 FROM assessment_results ar
+                                     WHERE ar.candidate_id = c.candidate_id)
+                           THEN 'assessed'::candidate_status
+                       ELSE 'registered'::candidate_status END
+             WHERE c.candidate_id = :cid
+               AND c.status NOT IN ('withdrawn','inactive')
+            RETURNING c.status::text
+            """
+        ),
+        {"cid": str(candidate_id)},
+    ).scalar_one_or_none()
+
+
+def _candidate_of(session: Session, placement_id: UUID) -> UUID | None:
+    return session.execute(
+        text("SELECT candidate_id FROM placements WHERE placement_id = :pid"),
+        {"pid": str(placement_id)},
+    ).scalar_one_or_none()
+
+
+def complete_placement(
+    session: Session, placement_id: UUID, ended_on: date | None = None
+) -> None:
+    """The work finished as agreed. Frees the candidate for new matches."""
+    updated = session.execute(
+        text(
+            """
+            UPDATE placements
+               SET status = 'completed',
+                   -- Never before it started: a placement can be active with a
+                   -- future start date (the shift reminder depends on that),
+                   -- and chk_placement_dates rightly refuses the inversion.
+                   ended_on = GREATEST(
+                       COALESCE(:ended_on, CURRENT_DATE),
+                       COALESCE(started_on, CURRENT_DATE))
+             WHERE placement_id = :pid AND status = 'active'
+            RETURNING candidate_id
+            """
+        ),
+        {"pid": str(placement_id), "ended_on": ended_on},
+    ).scalar_one_or_none()
+    if updated is None:
+        raise AttendanceError("only an active placement can be completed")
+
+    refresh_candidate_status(session, updated)
+    from app.messaging.events import on_placement_ended
+
+    on_placement_ended(session, placement_id, "placement completed")
+
+
+def terminate_placement(
+    session: Session, placement_id: UUID, reason: str,
+    ended_on: date | None = None,
+) -> None:
+    """The work ended early. A reason is required -- an unexplained termination
+    is indistinguishable from a dropout, and the two mean opposite things for
+    retention."""
+    if not reason.strip():
+        raise AttendanceError("a termination must say why")
+
+    updated = session.execute(
+        text(
+            """
+            UPDATE placements
+               SET status = 'terminated',
+                   ended_on = GREATEST(
+                       COALESCE(:ended_on, CURRENT_DATE),
+                       COALESCE(started_on, CURRENT_DATE))
+             WHERE placement_id = :pid AND status IN ('accepted','active')
+            RETURNING candidate_id
+            """
+        ),
+        {"pid": str(placement_id), "ended_on": ended_on},
+    ).scalar_one_or_none()
+    if updated is None:
+        raise AttendanceError("only an accepted or active placement can be ended")
+
+    session.execute(
+        text(
+            "UPDATE follow_ups SET notes = COALESCE(notes || ' | ', '') || :reason "
+            "WHERE placement_id = :pid AND completed_at IS NULL"
+        ),
+        {"pid": str(placement_id), "reason": f"terminated: {reason}"},
+    )
+    refresh_candidate_status(session, updated)
+    from app.messaging.events import on_placement_ended
+
+    on_placement_ended(session, placement_id, f"terminated: {reason}")
+
+
 def start_placement(
     session: Session, placement_id: UUID, started_on: date
 ) -> dict[str, date]:
@@ -71,6 +182,9 @@ def start_placement(
         )
 
     schedule = schedule_follow_ups(session, placement_id, started_on)
+    candidate_id = _candidate_of(session, placement_id)
+    if candidate_id:
+        refresh_candidate_status(session, candidate_id)
 
     from app.messaging.events import (
         on_follow_ups_scheduled,
@@ -160,6 +274,9 @@ def log_attendance(
         ),
         {"pid": str(placement_id)},
     ).scalar_one()
+
+    # A no-show frees them again: they are not working, whatever the offer said.
+    refresh_candidate_status(session, _candidate_of(session, placement_id))
 
     # Nothing further should go to someone who did not take up the work.
     from app.messaging.events import on_placement_ended

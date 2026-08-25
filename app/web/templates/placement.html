@@ -43,6 +43,25 @@
 </div>
 {% endif %}
 
+{% if p.status == 'active' %}
+<div class="card">
+  <h2 style="margin-top:0">Close this placement</h2>
+  <p class="small muted">Until it is closed the worker stays committed here and
+    will not be matched to anything overlapping.</p>
+  <form class="inline" method="post" action="/ui/placements/{{ p.placement_id }}/end">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <input type="hidden" name="outcome" value="completed">
+    <button>Finished as agreed</button>
+  </form>
+  <form class="inline" method="post" action="/ui/placements/{{ p.placement_id }}/end">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <input type="hidden" name="outcome" value="terminated">
+    <input name="reason" placeholder="Why did it end early?" style="width:auto" required>
+    <button class="danger">Ended early</button>
+  </form>
+</div>
+{% endif %}
+
 {% if p.status in ('active', 'no_show') %}
 <div class="card">
   <h2 style="margin-top:0">Log a day</h2>

@@ -41,8 +41,8 @@ def load_request(session: Session, request_id: UUID) -> RequestContext:
     row = session.execute(
         text(
             """
-            SELECT wr.request_id, wr.employer_id, wr.starts_on, wr.pay_rwf,
-                   wr.pay_unit, wr.shift_start, wr.shift_end,
+            SELECT wr.request_id, wr.employer_id, wr.starts_on, wr.ends_on,
+                   wr.pay_rwf, wr.pay_unit, wr.shift_start, wr.shift_end,
                    wr.transport_covered, e.site_lat, e.site_lng
               FROM work_requests wr
               JOIN employers e ON e.employer_id = wr.employer_id
@@ -75,6 +75,7 @@ def load_request(session: Session, request_id: UUID) -> RequestContext:
             request_id=row["request_id"],
             employer_id=row["employer_id"],
             starts_on=row["starts_on"],
+            ends_on=row["ends_on"],
             pay_rwf=row["pay_rwf"],
             pay_unit=row["pay_unit"],
             shift_start=row["shift_start"],
@@ -104,7 +105,8 @@ SELECT c.candidate_id,
        COALESCE(retention.rate, 0.0)              AS retention_30day_rate,
        COALESCE(scores.best_score, 0)             AS assessment_score,
        COALESCE(skills.scores, '{}'::jsonb)       AS skill_scores,
-       COALESCE(windows.slots, '[]'::jsonb)       AS availability
+       COALESCE(windows.slots, '[]'::jsonb)       AS availability,
+       COALESCE(conflict.committed, false)        AS has_conflicting_commitment
   FROM candidates c
   -- Age eligibility arrives as a boolean from a SECURITY DEFINER function, so
   -- no date of birth crosses the identity boundary and operational code needs
@@ -154,7 +156,35 @@ SELECT c.candidate_id,
         FROM availability av
        WHERE av.candidate_id = c.candidate_id
   ) windows ON true
- WHERE c.status IN ('registered','assessed','trained')
+  -- Work this candidate is already committed to that overlaps the request.
+  -- An open-ended request counts as its start date only; a request with no
+  -- shift times counts as the whole day, so it conflicts with anything.
+  -- OVERLAPS is half-open, so back-to-back shifts (08:00-16:00 then
+  -- 16:00-20:00) correctly do not conflict.
+  LEFT JOIN LATERAL (
+      SELECT true AS committed
+        FROM placements p
+        JOIN work_requests w ON w.request_id = p.request_id
+       WHERE p.candidate_id = c.candidate_id
+         AND p.status IN ('offered','accepted','active')
+         AND w.request_id <> CAST(:request_id AS uuid)
+         AND daterange(w.starts_on, COALESCE(w.ends_on, w.starts_on), '[]')
+             && daterange(CAST(:starts_on AS date),
+                          COALESCE(CAST(:ends_on AS date),
+                                   CAST(:starts_on AS date)), '[]')
+         AND (w.shift_start IS NULL
+              OR CAST(:shift_start AS time) IS NULL
+              OR (w.shift_start, w.shift_end)
+                 OVERLAPS (CAST(:shift_start AS time), CAST(:shift_end AS time)))
+       LIMIT 1
+  ) conflict ON true
+ -- Only people genuinely out of the pool. 'placed' is deliberately NOT
+ -- excluded: shift work is the point, and someone working Monday should be
+ -- matchable for Tuesday. Double-booking is prevented by the overlap check
+ -- above, which is precise, rather than by a status that is a summary.
+ -- Excluding them here would also hide them from the rejection list, so a
+ -- coordinator would not even see why nobody matched.
+ WHERE c.status NOT IN ('withdrawn','inactive')
 """
 
 
@@ -180,6 +210,10 @@ def load_candidates(
         {
             "employer_id": str(context.employer_id),
             "starts_on": context.request.starts_on,
+            "ends_on": context.request.ends_on,
+            "request_id": str(context.request.request_id),
+            "shift_start": context.request.shift_start,
+            "shift_end": context.request.shift_end,
         },
     ).mappings()
 
@@ -208,6 +242,7 @@ def load_candidates(
                 has_placement_consent=row["has_placement_consent"],
                 est_transport_rwf=estimate.daily_rwf if estimate else 0,
                 est_commute_min=estimate.commute_min if estimate else None,
+                has_conflicting_commitment=row["has_conflicting_commitment"],
                 prior_completed_with_employer=row["completed_with_employer"],
                 retention_30day_rate=row["retention_30day_rate"],
                 assessment_score=row["assessment_score"],

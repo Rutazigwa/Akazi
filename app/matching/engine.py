@@ -65,6 +65,7 @@ class WorkRequest:
     starts_on: date
     pay_rwf: int
     pay_unit: str  # day | hour | month | task
+    ends_on: date | None = None
     shift_start: time | None = None
     shift_end: time | None = None
     transport_covered: bool = False
@@ -113,6 +114,10 @@ class Candidate:
     has_placement_consent: bool = False
     est_transport_rwf: int = 0
     est_commute_min: int | None = None
+    # Already committed to work that overlaps this request. Computed by the
+    # repository, because it is a fact about the database rather than about
+    # the candidate.
+    has_conflicting_commitment: bool = False
     # Reliability history -- the primary ranking signal.
     prior_completed_with_employer: int = 0
     retention_30day_rate: float = 0.0
@@ -175,6 +180,13 @@ def _hard_exclusions(c: Candidate, r: WorkRequest) -> str | None:
         )
     if not c.has_placement_consent:
         return "no current consent record for the placement purpose"
+
+    # Nobody can be in two places at once, and the whole promise to the
+    # employer is that the person turns up. Checked against actual overlapping
+    # placements rather than candidate status: status is a summary that drifts,
+    # the overlap is the fact.
+    if c.has_conflicting_commitment:
+        return "already committed to overlapping work"
 
     if r.shift_start is not None and r.shift_end is not None:
         covered = any(
