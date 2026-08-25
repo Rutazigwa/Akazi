@@ -27,6 +27,15 @@ class EmployerLoginRequired(Exception):
     pass
 
 
+class EmployerPasswordChangeRequired(Exception):
+    """Raised when a coordinator-issued password has not been replaced."""
+
+
+PASSWORD_CHANGE_EXEMPT = frozenset(
+    {"/employer/password", "/employer/logout", "/employer/login"}
+)
+
+
 def set_employer_cookie(response, token: str) -> None:
     settings = get_settings()
     response.set_cookie(
@@ -44,15 +53,24 @@ def clear_employer_cookie(response) -> None:
 
 
 def current_employer(
+    request: Request,
     session: SessionDep,
     akazi_employer: Annotated[str | None, Cookie()] = None,
 ) -> EmployerPrincipal:
     if not akazi_employer:
         raise EmployerLoginRequired()
     try:
-        return authenticate_employer(session, akazi_employer)
+        employer = authenticate_employer(session, akazi_employer)
     except EmployerAuthError as exc:
         raise EmployerLoginRequired() from exc
+
+    # A coordinator issued this password and still knows it.
+    if (
+        employer.must_change_password
+        and request.url.path not in PASSWORD_CHANGE_EXEMPT
+    ):
+        raise EmployerPasswordChangeRequired()
+    return employer
 
 
 EmployerDep = Annotated[EmployerPrincipal, Depends(current_employer)]

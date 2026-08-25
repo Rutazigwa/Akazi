@@ -20,7 +20,12 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 
 from app.deps import SessionDep
-from app.employer_auth import EmployerAuthError, employer_login, employer_logout
+from app.employer_auth import (
+    EmployerAuthError,
+    change_employer_password,
+    employer_login,
+    employer_logout,
+)
 from app.operations.attendance import AttendanceError
 from app.operations.employer_portal import (
     EmployerPortalError,
@@ -88,9 +93,37 @@ def do_login(
     except EmployerAuthError:
         return _back("/employer/login", "Invalid credentials", "err")
 
-    response = RedirectResponse("/employer/", status_code=303)
+    from app.employer_auth import authenticate_employer
+
+    principal = authenticate_employer(session, token)
+    target = (
+        "/employer/password" if principal.must_change_password else "/employer/"
+    )
+    response = RedirectResponse(target, status_code=303)
     set_employer_cookie(response, token)
     return response
+
+
+@router.get("/password", response_class=HTMLResponse)
+def password_form(request: Request, employer: EmployerDep):
+    return _render(request, "password.html", employer, **_flash(request))
+
+
+@router.post("/password")
+def change_password(
+    session: SessionDep,
+    employer: EmployerCsrfDep,
+    current_password: Annotated[str, Form()],
+    new_password: Annotated[str, Form()],
+):
+    try:
+        change_employer_password(
+            session, employer.contact_id, current_password, new_password,
+            keep_session_id=employer.session_id,
+        )
+    except EmployerAuthError as exc:
+        return _back("/employer/password", str(exc), "err")
+    return _back("/employer/", "Password changed")
 
 
 @router.post("/logout")

@@ -229,6 +229,55 @@ def authenticate_employer(session: Session, token: str) -> EmployerPrincipal:
     )
 
 
+def change_employer_password(
+    session: Session,
+    contact_id: UUID,
+    current_password: str,
+    new_password: str,
+    keep_session_id: UUID | None = None,
+) -> int:
+    """Replace a password after re-verifying the current one.
+
+    Every other session goes. The usual reason for changing is that the old
+    password reached someone it should not have -- and a coordinator issued
+    this one, so at minimum they know it.
+    """
+    stored = session.execute(
+        text(
+            "SELECT password_hash FROM employer_contacts WHERE contact_id = :cid"
+        ),
+        {"cid": str(contact_id)},
+    ).scalar_one_or_none()
+    if stored is None:
+        raise EmployerAuthError("invalid credentials")
+
+    try:
+        _hasher.verify(stored, current_password)
+    except VerifyMismatchError:
+        raise EmployerAuthError("invalid credentials") from None
+
+    if new_password == current_password:
+        raise EmployerAuthError("the new password must differ from the current one")
+
+    set_contact_password(session, contact_id, new_password)
+
+    return session.execute(
+        text(
+            """
+            UPDATE employer_sessions SET revoked_at = now()
+             WHERE contact_id = :cid AND revoked_at IS NULL
+               AND expires_at > now()
+               AND (CAST(:keep AS uuid) IS NULL
+                    OR session_id <> CAST(:keep AS uuid))
+            """
+        ),
+        {
+            "cid": str(contact_id),
+            "keep": str(keep_session_id) if keep_session_id else None,
+        },
+    ).rowcount
+
+
 def employer_logout(session: Session, token: str) -> None:
     session.execute(
         text(

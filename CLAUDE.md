@@ -410,6 +410,10 @@ in is the setup for a convincing fake login page.
 - **Generated passwords are shown once and never stored readable.** They ride
   through a single redirect and are gone on reload -- do not "improve" this by
   persisting them.
+- **`must_change_password` is a gate, not a label.** It blocks every path
+  except the change form and signing out, for staff and employers alike. It
+  spent a long time being displayed and not enforced, which is worse than not
+  having it: the console claimed a control that did not exist.
 - **Every state-changing form carries a CSRF token**, checked against the
   session. The bearer API does not need this; the cookie UI does, because a
   browser sends a cookie on any request it is tricked into making.

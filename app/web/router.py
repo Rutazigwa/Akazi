@@ -129,6 +129,12 @@ def do_login(
     # `next` arrives from a query string, so it is attacker-controllable in a
     # link. Only a local path survives.
     destination = safe_path(next, "/ui/")
+    # A temporary password is the first thing to deal with, ahead of MFA.
+    if staff.must_change_password:
+        response = RedirectResponse("/ui/password", status_code=303)
+        set_session_cookie(response, token)
+        return response
+
     # Enrolled but not yet elevated: offer the code now rather than letting the
     # coordinator hit a wall on the first screen that needs it.
     target = destination
@@ -142,6 +148,34 @@ def do_login(
     response = RedirectResponse(target, status_code=303)
     set_session_cookie(response, token)
     return response
+
+
+@router.get("/password", response_class=HTMLResponse)
+def password_form(request: Request, staff: WebStaffDep):
+    return _render(request, "password.html", staff, **_flash(request))
+
+
+@router.post("/password")
+def change_password(
+    request: Request,
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    current_password: Annotated[str, Form()],
+    new_password: Annotated[str, Form()],
+):
+    from app.auth import AuthError, change_own_password
+
+    try:
+        revoked = change_own_password(
+            session, staff.staff_id, current_password, new_password,
+            keep_session_id=staff.session_id,
+        )
+    except AuthError as exc:
+        return _back("/ui/password", str(exc), "err")
+    return _back(
+        "/ui/",
+        f"Password changed — {revoked} other session(s) signed out",
+    )
 
 
 @router.get("/mfa", response_class=HTMLResponse)

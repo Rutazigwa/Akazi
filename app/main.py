@@ -26,8 +26,15 @@ from app.routers import (
 )
 from app.web import employer_router
 from app.web import router as web_router
-from app.web.deps import LoginRequired, redirect_to_login
-from app.web.employer_deps import EmployerLoginRequired
+from app.web.deps import (
+    LoginRequired,
+    PasswordChangeRequired,
+    redirect_to_login,
+)
+from app.web.employer_deps import (
+    EmployerLoginRequired,
+    EmployerPasswordChangeRequired,
+)
 
 settings = get_settings()
 
@@ -52,9 +59,22 @@ def _login_required(request: Request, exc: LoginRequired):
     return redirect_to_login(request)
 
 
+@app.exception_handler(PasswordChangeRequired)
+def _password_change_required(request: Request, exc: PasswordChangeRequired):
+    """Send them to the change page rather than a dead end."""
+    return RedirectResponse("/ui/password", status_code=303)
+
+
 @app.exception_handler(EmployerLoginRequired)
 def _employer_login_required(request: Request, exc: EmployerLoginRequired):
     return RedirectResponse("/employer/login", status_code=303)
+
+
+@app.exception_handler(EmployerPasswordChangeRequired)
+def _employer_password_change(
+    request: Request, exc: EmployerPasswordChangeRequired
+):
+    return RedirectResponse("/employer/password", status_code=303)
 
 
 @app.get("/")

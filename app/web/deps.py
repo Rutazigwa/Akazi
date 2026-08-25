@@ -52,7 +52,16 @@ def clear_session_cookie(response) -> None:
     response.delete_cookie(SESSION_COOKIE, path="/")
 
 
+class PasswordChangeRequired(Exception):
+    """Raised when a temporary password has not yet been replaced."""
+
+
+# Reachable while a change is outstanding: the change page itself, and leaving.
+PASSWORD_CHANGE_EXEMPT = frozenset({"/ui/password", "/ui/logout", "/ui/login"})
+
+
 def current_web_staff(
+    request: Request,
     session: SessionDep,
     akazi_session: Annotated[str | None, Cookie()] = None,
 ) -> AuthenticatedStaff:
@@ -64,6 +73,13 @@ def current_web_staff(
         raise LoginRequired() from exc
 
     from sqlalchemy import text
+
+    # A password someone else issued has to be spent on choosing a real one.
+    if (
+        staff.must_change_password
+        and request.url.path not in PASSWORD_CHANGE_EXEMPT
+    ):
+        raise PasswordChangeRequired()
 
     session.execute(
         text("SELECT set_config('app.staff_id', :sid, true)"),

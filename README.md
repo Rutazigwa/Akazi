@@ -331,8 +331,11 @@ Owner and admin only, under `/staff`: create an account, reset a forgotten
 password, clear a lost second factor, change role or identity access, deactivate
 someone.
 
-New accounts get a generated single-use password, returned once and forced to
-change at first login — an administrator who picks the password knows it.
+New accounts get a generated single-use password, returned once. **It is
+enforced as temporary**: until it is replaced, every other endpoint and page
+refuses — only the change form and signing out are reachable. An administrator
+generated that password and still knows it, so it buys exactly one action.
+The same applies to employer contacts invited to their dashboard.
 Identity access defaults **off** even for an admin.
 
 Withdrawing identity access, resetting a password, resetting MFA and deactivating

@@ -95,15 +95,21 @@ def raise_escalation(
         )
 
     window = RESPONSE_TIMES[kind]
+    # One timestamp, used for both. clock_timestamp() is volatile and advances
+    # within a statement, so calling it twice made the deadline a few
+    # microseconds more than the response window from the moment it was raised
+    # -- and "respond within two hours of the report" should mean exactly that.
     return session.execute(
         text(
             """
+            WITH raised AS (SELECT clock_timestamp() AS at)
             INSERT INTO escalations (kind, candidate_id, placement_id,
                                      inbound_id, follow_up_id, owner_staff_id,
-                                     respond_by, detail)
-            VALUES (CAST(:kind AS escalation_kind), :candidate_id, :placement_id,
-                    :inbound_id, :follow_up_id, :owner,
-                    clock_timestamp() + CAST(:window AS interval), :detail)
+                                     raised_at, respond_by, detail)
+            SELECT CAST(:kind AS escalation_kind), :candidate_id, :placement_id,
+                   :inbound_id, :follow_up_id, :owner,
+                   raised.at, raised.at + CAST(:window AS interval), :detail
+              FROM raised
             RETURNING escalation_id
             """
         ),

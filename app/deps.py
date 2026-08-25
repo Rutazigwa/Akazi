@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -37,7 +37,15 @@ def _bearer(authorization: str | None) -> str:
     return authorization.split(" ", 1)[1].strip()
 
 
+# Paths reachable while a password change is outstanding. Deliberately tiny:
+# enough to change the password or leave, nothing else.
+PASSWORD_CHANGE_EXEMPT = frozenset(
+    {"/auth/password", "/auth/logout", "/auth/me"}
+)
+
+
 def current_staff(
+    request: Request,
     session: SessionDep,
     authorization: Annotated[str | None, Header()] = None,
 ) -> AuthenticatedStaff:
@@ -50,6 +58,21 @@ def current_staff(
             detail=str(exc),
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+
+    # A temporary password must be spent on choosing a real one. Without this
+    # the flag was decoration: an administrator generates a password, hands it
+    # over, and both of them can use it indefinitely.
+    if (
+        staff.must_change_password
+        and request.url.path not in PASSWORD_CHANGE_EXEMPT
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "this password is temporary and must be changed before "
+                "anything else: POST /auth/password"
+            ),
+        )
 
     # Everything written from here on is attributable to this person.
     session.execute(

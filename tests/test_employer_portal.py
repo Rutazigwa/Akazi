@@ -102,9 +102,17 @@ def rival(session, staff_id):
     }
 
 
+REPLACEMENT_PASSWORD = "an-employer-chosen-password"
+
+
 @pytest.fixture
 def portal(api, employer_account):
-    r = api.post(
+    """A signed-in employer who has replaced their invited password.
+
+    The invite is temporary and enforced as such, so this walks the real first
+    sign-in: log in, land on the change page, choose a password.
+    """
+    landed = api.post(
         "/employer/login",
         data={
             "phone": employer_account["phone"],
@@ -112,7 +120,20 @@ def portal(api, employer_account):
         },
         follow_redirects=True,
     )
-    assert r.status_code == 200
+    assert landed.status_code == 200
+    assert "Choose a password" in landed.text, "a temporary password must be forced"
+
+    changed = api.post(
+        "/employer/password",
+        data={
+            "csrf_token": csrf(landed.text),
+            "current_password": employer_account["password"],
+            "new_password": REPLACEMENT_PASSWORD,
+        },
+        follow_redirects=True,
+    )
+    assert changed.status_code == 200
+    employer_account["password"] = REPLACEMENT_PASSWORD
     return api
 
 
