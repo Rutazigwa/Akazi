@@ -159,8 +159,18 @@ The screens follow the operation rather than the schema:
   requests.
 - **Work request → matches** — ranked candidates each with the sentence a
   coordinator reads back to the employer, and every exclusion with its reason.
-- **Placement** — accept, start, log a day, and for a no-show, the candidates who
-  can cover it *right there*, without navigating away while the clock runs.
+- **Placement** — accept, start, log a day, record pay, and for a no-show, the
+  candidates who can cover it *right there*, without navigating away while the
+  clock runs.
+- **Staff** (owner/admin) — create an account, grant or revoke identity access,
+  reset a password or a lost second factor, deactivate someone, and see whether
+  the audit chain still verifies. The generated password is shown once.
+- **Reports** (owner/admin) — escalation response times against their targets,
+  and the LMIS export.
+
+Role checks are enforced in the handler, not only by hiding the nav link: a
+hidden link is a UI affordance, never a control, and there is a test that posts
+the hidden form anyway.
 
 The UI authenticates with a cookie rather than a bearer token, so CSRF applies to
 it in a way it does not to the JSON API. Two defences: `SameSite=Strict` on an

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Reports · Akazi{% endblock %}
+{% block body %}
+<h1>Reports</h1>
+
+<div class="card">
+  <h2 style="margin-top:0">Escalation response times</h2>
+  {% if performance %}
+  <table>
+    <tr><th>Kind</th><th class="num">Raised</th><th class="num">Answered in time</th>
+        <th class="num">Overdue now</th><th class="num">Avg hours</th></tr>
+    {% for row in performance %}
+    <tr>
+      <td><span class="pill {{ 'bad' if row.kind in ('harassment','safety') else 'warn' }}">{{ row.kind }}</span></td>
+      <td class="num">{{ row.raised }}</td>
+      <td class="num">{{ row.in_time }}</td>
+      <td class="num">{% if row.currently_overdue %}<span class="pill bad">{{ row.currently_overdue }}</span>{% else %}0{% endif %}</td>
+      <td class="num">{{ row.avg_hours }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted" style="margin-bottom:0">
+    A safeguard nobody measures decays into a form. Harassment must be picked up
+    within 2 hours, safety within 4.
+  </p>
+  {% else %}
+  <p class="muted small">No escalations raised yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Outcome report for the LMIS</h2>
+  <p class="small muted">
+    Grouped and disclosure-controlled: cells under {{ min_cell }} are suppressed,
+    and no identifier of any kind is included — not even our own record ids,
+    which are stable across exports.
+  </p>
+  <form method="get" action="/lmis/report.csv">
+    <div class="grid">
+      <div><label for="starts_on">From</label>
+        <input id="starts_on" name="starts_on" type="date" value="{{ default_from }}" required></div>
+      <div><label for="ends_on">To</label>
+        <input id="ends_on" name="ends_on" type="date" value="{{ today }}" required></div>
+    </div>
+    <p><button>Download CSV</button></p>
+  </form>
+  <p class="small muted" style="margin-bottom:0">
+    The national system needs verified private-sector outcomes and we generate
+    exactly that. Supplying it is a contract, and political cover.
+  </p>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Reporting consent</h2>
+  <p>
+    <strong>{{ consent.granted }}</strong> granted ·
+    <strong>{{ consent.refused }}</strong> refused
+  </p>
+  <p class="small muted" style="margin-bottom:0">
+    Tracked separately from placement consent: agreeing to be placed is not
+    agreeing to appear in a national dataset. This is the population that could
+    lawfully appear in a record-level submission, if one were ever asked for.
+  </p>
+</div>
+{% endblock %}

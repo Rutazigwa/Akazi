@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Staff · Akazi{% endblock %}
+{% block body %}
+<h1>Staff</h1>
+
+{% if new_account %}
+{# Shown once and never again. The password is not stored in readable form, so
+   there is no second chance to retrieve it. #}
+<div class="card" style="border-color:var(--accent)">
+  <h2 style="margin-top:0">{{ new_account.label }}</h2>
+  <p>Temporary password: <code style="font-size:1.1em">{{ new_account.password }}</code></p>
+  <p class="small muted" style="margin-bottom:0">
+    Shown once — it is stored only as a hash, so it cannot be retrieved again.
+    Give it to them directly and they must change it at first sign-in.
+  </p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Add someone</h2>
+  <form method="post" action="/ui/staff">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <div class="grid">
+      <div><label for="full_name">Name</label><input id="full_name" name="full_name" required></div>
+      <div><label for="phone">Phone</label><input id="phone" name="phone" required placeholder="+250…"></div>
+      <div><label for="email">Email</label><input id="email" name="email" type="email"></div>
+      <div>
+        <label for="role">Role</label>
+        <select id="role" name="role">
+          <option value="coordinator">Coordinator</option>
+          <option value="supervisor">Supervisor</option>
+          <option value="admin">Admin</option>
+          <option value="owner">Owner</option>
+          <option value="readonly">Read only</option>
+        </select>
+      </div>
+      <div>
+        <label for="can_view_identity">Identity data access</label>
+        <select id="can_view_identity" name="can_view_identity">
+          <option value="false">No</option>
+          <option value="true">Yes — can read national ID numbers</option>
+        </select>
+      </div>
+    </div>
+    <p class="small muted">
+      Identity access is granted deliberately, never implied by role — and every
+      read of a national ID number is recorded against the person who made it.
+    </p>
+    <p><button>Create account</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Everyone ({{ people|length }})</h2>
+  <table>
+    <tr>
+      <th>Name</th><th>Role</th><th>Identity</th><th>2FA</th><th>Status</th><th></th>
+    </tr>
+    {% for p in people %}
+    <tr>
+      <td>{{ p.full_name }}<br><span class="small muted">{{ p.phone }}</span></td>
+      <td>{{ p.role }}</td>
+      <td>
+        {% if p.can_view_identity %}<span class="pill warn">yes</span>{% else %}<span class="muted small">no</span>{% endif %}
+      </td>
+      <td>
+        {% if p.mfa_enrolled %}<span class="pill good">enrolled</span>
+        {% elif p.can_view_identity %}<span class="pill bad">needed</span>
+        {% else %}<span class="muted small">—</span>{% endif %}
+      </td>
+      <td>
+        {% if not p.is_active %}<span class="pill bad">inactive</span>
+        {% elif p.locked_until %}<span class="pill warn">locked</span>
+        {% elif p.must_change_password %}<span class="pill warn">must change password</span>
+        {% else %}<span class="pill good">active</span>{% endif %}
+      </td>
+      <td>
+        {% if p.is_active and p.staff_id != staff.staff_id %}
+        <form class="inline" method="post" action="/ui/staff/{{ p.staff_id }}/identity">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <input type="hidden" name="can_view_identity" value="{{ 'false' if p.can_view_identity else 'true' }}">
+          <button class="secondary">{{ 'Revoke identity' if p.can_view_identity else 'Grant identity' }}</button>
+        </form>
+        <form class="inline" method="post" action="/ui/staff/{{ p.staff_id }}/reset-password">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <button class="secondary">Reset password</button>
+        </form>
+        <form class="inline" method="post" action="/ui/staff/{{ p.staff_id }}/reset-mfa">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <button class="secondary">Reset 2FA</button>
+        </form>
+        <form class="inline" method="post" action="/ui/staff/{{ p.staff_id }}/deactivate">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <button class="danger">Deactivate</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted" style="margin-bottom:0">
+    Changing identity access, resetting a password or a second factor, and
+    deactivating all cut the person's live sessions immediately — access that
+    waits for a token to expire is not access control.
+  </p>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Audit log integrity</h2>
+  {% if audit.intact %}
+  <p><span class="pill good">intact</span>
+    {{ audit.entries }} entries, head
+    <code>{{ audit.head_hash[:16] }}…</code></p>
+  <p class="small muted" style="margin-bottom:0">
+    Record that head hash somewhere off this server. The chain makes tampering
+    detectable; a hash held elsewhere makes it undeniable.
+  </p>
+  {% else %}
+  <p><span class="pill bad">BROKEN</span> at entry
+    {{ audit.broken_at.broken_at_audit_id }}: {{ audit.broken_at.reason }}</p>
+  <p class="small">This is a finding to investigate, never something to repair
+    by recomputing hashes — recomputing the chain is exactly what an attacker
+    would do.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -404,6 +404,12 @@ in is the setup for a convincing fake login page.
 
 ### Web UI invariants
 
+- **Role checks belong in the handler, not the template.** Hiding a nav link
+  is an affordance; `_require_admin` is the control. Tests post the hidden
+  forms directly.
+- **Generated passwords are shown once and never stored readable.** They ride
+  through a single redirect and are gone on reload -- do not "improve" this by
+  persisting them.
 - **Every state-changing form carries a CSRF token**, checked against the
   session. The bearer API does not need this; the cookie UI does, because a
   browser sends a cookie on any request it is tricked into making.

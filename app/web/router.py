@@ -12,7 +12,7 @@ state-changing form carries a CSRF token (see app/web/deps.py).
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -34,11 +34,14 @@ from app.operations.attendance import (
     record_replacement,
     start_placement,
 )
+from app.employer_auth import invite_contact
 from app.operations.escalations import (
     EscalationError,
     acknowledge,
     open_escalations,
+    response_performance,
 )
+from app.operations.lmis import MIN_CELL, reporting_consent_counts
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
 from app.operations.pay import (
     PayError,
@@ -224,6 +227,261 @@ def acknowledge_escalation(
     return _back("/ui/", "Picked up — the response clock has stopped")
 
 
+# --- staff administration --------------------------------------------------
+
+ADMIN_ROLES = ("owner", "admin")
+
+
+def _require_admin(staff):
+    """Owner and admin only. Returns a redirect when refused, else None.
+
+    Enforced here rather than only by hiding the nav link: a hidden link is a
+    UI affordance, never a control.
+    """
+    if staff.role not in ADMIN_ROLES:
+        return _back("/ui/", "Staff administration is for owners and admins", "err")
+    return None
+
+
+@router.get("/staff", response_class=HTMLResponse)
+def staff_page(request: Request, session: SessionDep, staff: WebStaffDep):
+    refused = _require_admin(staff)
+    if refused:
+        return refused
+
+    people = session.execute(
+        text(
+            """
+            SELECT staff_id, full_name, phone, email, role::text AS role,
+                   can_view_identity, is_active, must_change_password,
+                   locked_until,
+                   (totp_enrolled_at IS NOT NULL) AS mfa_enrolled
+              FROM staff ORDER BY is_active DESC, full_name
+            """
+        )
+    ).mappings()
+
+    broken = session.execute(
+        text("SELECT * FROM verify_audit_chain()")
+    ).mappings().first()
+    head = session.execute(
+        text("SELECT * FROM audit_chain_head()")
+    ).mappings().first()
+
+    # Carried through one redirect so a generated password survives the
+    # post-redirect-get without ever being stored.
+    new_account = None
+    if request.query_params.get("account_label"):
+        new_account = {
+            "label": request.query_params["account_label"],
+            "password": request.query_params.get("account_password", ""),
+        }
+
+    return _render(
+        request, "staff.html", staff, nav="staff",
+        people=[dict(p) for p in people],
+        new_account=new_account,
+        audit={
+            "intact": broken is None,
+            "broken_at": dict(broken) if broken else None,
+            "entries": head["entries"] if head else 0,
+            "head_hash": head["entry_hash"] if head else "",
+        },
+        **_flash(request),
+    )
+
+
+def _with_password(target: str, label: str, password: str) -> RedirectResponse:
+    from urllib.parse import quote
+
+    return RedirectResponse(
+        f"{target}?account_label={quote(label)}"
+        f"&account_password={quote(password)}",
+        status_code=303,
+    )
+
+
+@router.post("/staff")
+async def create_staff_member(
+    request: Request, session: SessionDep, staff: CsrfStaffDep
+):
+    refused = _require_admin(staff)
+    if refused:
+        return refused
+
+    import secrets
+
+    from app.auth import AuthError, set_password
+
+    form = await request.form()
+    phone = str(form["phone"]).strip()
+
+    if session.execute(
+        text("SELECT 1 FROM staff WHERE phone = :phone"), {"phone": phone}
+    ).first():
+        return _back("/ui/staff", "Someone already has that phone number", "err")
+
+    temporary = secrets.token_urlsafe(16)
+    new_id = session.execute(
+        text(
+            """
+            INSERT INTO staff (full_name, phone, email, role, can_view_identity)
+            VALUES (:name, :phone, :email, CAST(:role AS staff_role), :identity)
+            RETURNING staff_id
+            """
+        ),
+        {
+            "name": str(form["full_name"]).strip(),
+            "phone": phone,
+            "email": str(form.get("email", "")).strip() or None,
+            "role": str(form["role"]),
+            "identity": form.get("can_view_identity") == "true",
+        },
+    ).scalar_one()
+
+    try:
+        set_password(session, new_id, temporary, must_change=True)
+    except AuthError as exc:
+        return _back("/ui/staff", str(exc), "err")
+
+    _audit_staff_change(session, staff.staff_id, new_id, {
+        "event": "staff_created",
+        "role": str(form["role"]),
+        "can_view_identity": form.get("can_view_identity") == "true",
+    })
+    return _with_password(
+        "/ui/staff", f"Created {form['full_name']}", temporary
+    )
+
+
+def _audit_staff_change(session, actor, target, detail) -> None:
+    import json
+
+    session.execute(
+        text(
+            "INSERT INTO audit_log (staff_id, table_name, record_id, action, "
+            "                       detail) "
+            "VALUES (:actor, 'staff', :target, 'update', :detail)"
+        ),
+        {"actor": str(actor), "target": str(target), "detail": json.dumps(detail)},
+    )
+
+
+@router.post("/staff/{staff_id}/identity")
+def toggle_identity(
+    staff_id: UUID,
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    can_view_identity: Annotated[str, Form()],
+):
+    refused = _require_admin(staff)
+    if refused:
+        return refused
+
+    from app.auth import revoke_all_sessions
+
+    grant = can_view_identity == "true"
+    session.execute(
+        text("UPDATE staff SET can_view_identity = :g WHERE staff_id = :sid"),
+        {"g": grant, "sid": str(staff_id)},
+    )
+    revoked = revoke_all_sessions(session, staff_id)
+    _audit_staff_change(session, staff.staff_id, staff_id, {
+        "event": "staff_updated", "can_view_identity": grant,
+    })
+    return _back(
+        "/ui/staff",
+        f"Identity access {'granted' if grant else 'revoked'} — "
+        f"{revoked} session(s) ended",
+    )
+
+
+@router.post("/staff/{staff_id}/reset-password")
+def reset_staff_password(
+    staff_id: UUID, session: SessionDep, staff: CsrfStaffDep
+):
+    refused = _require_admin(staff)
+    if refused:
+        return refused
+
+    import secrets
+
+    from app.auth import revoke_all_sessions, set_password
+
+    name = session.execute(
+        text("SELECT full_name FROM staff WHERE staff_id = :sid"),
+        {"sid": str(staff_id)},
+    ).scalar_one_or_none()
+    if name is None:
+        return _back("/ui/staff", "No such staff member", "err")
+
+    temporary = secrets.token_urlsafe(16)
+    set_password(session, staff_id, temporary, must_change=True)
+    revoke_all_sessions(session, staff_id)
+    _audit_staff_change(session, staff.staff_id, staff_id,
+                        {"event": "password_reset"})
+    return _with_password("/ui/staff", f"New password for {name}", temporary)
+
+
+@router.post("/staff/{staff_id}/reset-mfa")
+def reset_staff_mfa(staff_id: UUID, session: SessionDep, staff: CsrfStaffDep):
+    """For a lost phone. Sessions go with it -- one elevated by the old factor
+    must not survive its removal."""
+    refused = _require_admin(staff)
+    if refused:
+        return refused
+
+    from app.mfa import reset_enrolment
+
+    reset_enrolment(session, staff_id)
+    _audit_staff_change(session, staff.staff_id, staff_id, {"event": "mfa_reset"})
+    return _back("/ui/staff", "Second factor cleared — they must enrol again")
+
+
+@router.post("/staff/{staff_id}/deactivate")
+def deactivate_staff(staff_id: UUID, session: SessionDep, staff: CsrfStaffDep):
+    refused = _require_admin(staff)
+    if refused:
+        return refused
+    if staff_id == staff.staff_id:
+        return _back("/ui/staff", "You cannot deactivate your own account", "err")
+
+    from app.auth import revoke_all_sessions
+
+    updated = session.execute(
+        text(
+            "UPDATE staff SET is_active = false, deactivated_at = now() "
+            "WHERE staff_id = :sid AND is_active RETURNING full_name"
+        ),
+        {"sid": str(staff_id)},
+    ).scalar_one_or_none()
+    if updated is None:
+        return _back("/ui/staff", "Already inactive", "err")
+
+    revoked = revoke_all_sessions(session, staff_id)
+    _audit_staff_change(session, staff.staff_id, staff_id,
+                        {"event": "deactivated"})
+    return _back("/ui/staff", f"{updated} deactivated — {revoked} session(s) ended")
+
+
+# --- reports ---------------------------------------------------------------
+
+@router.get("/reports", response_class=HTMLResponse)
+def reports_page(request: Request, session: SessionDep, staff: WebStaffDep):
+    refused = _require_admin(staff)
+    if refused:
+        return refused
+
+    return _render(
+        request, "reports.html", staff, nav="reports",
+        performance=response_performance(session),
+        consent=reporting_consent_counts(session),
+        min_cell=MIN_CELL,
+        default_from=(date.today() - timedelta(days=90)).isoformat(),
+        **_flash(request),
+    )
+
+
 # --- employers -------------------------------------------------------------
 
 def _employers(session):
@@ -241,9 +499,32 @@ def _employers(session):
 
 @router.get("/employers", response_class=HTMLResponse)
 def employers_page(request: Request, session: SessionDep, staff: WebStaffDep):
+    contacts = session.execute(
+        text(
+            """
+            SELECT employer_id, contact_id, full_name, phone, is_primary,
+                   (password_hash IS NOT NULL) AS has_login
+              FROM employer_contacts
+             WHERE is_active
+             ORDER BY is_primary DESC, full_name
+            """
+        )
+    ).mappings()
+    grouped: dict = {}
+    for row in contacts:
+        grouped.setdefault(str(row["employer_id"]), []).append(dict(row))
+
+    new_account = None
+    if request.query_params.get("account_label"):
+        new_account = {
+            "label": request.query_params["account_label"],
+            "password": request.query_params.get("account_password", ""),
+        }
+
     return _render(
         request, "employers.html", staff, nav="employers",
-        employers=_employers(session), **_flash(request),
+        employers=_employers(session), contacts=grouped,
+        new_account=new_account, **_flash(request),
     )
 
 
@@ -271,6 +552,34 @@ def create_employer(
         is_cooperative=is_cooperative == "true",
     )
     return _back("/ui/employers", f"Registered {business_name}")
+
+
+@router.post("/employers/{employer_id}/contacts")
+async def add_contact(
+    employer_id: UUID, request: Request, session: SessionDep, staff: CsrfStaffDep
+):
+    """Add a contact, optionally with a login to the employer dashboard."""
+    from app.operations.registry import add_employer_contact
+
+    form = await request.form()
+    contact_id = add_employer_contact(
+        session,
+        employer_id,
+        str(form["full_name"]).strip(),
+        str(form["phone"]).strip(),
+        str(form.get("role_title", "")).strip() or None,
+        str(form.get("email", "")).strip() or None,
+        form.get("is_primary") == "true",
+    )
+
+    if form.get("give_login") != "true":
+        return _back("/ui/employers", "Contact added")
+
+    return _with_password(
+        "/ui/employers",
+        f"Login for {form['full_name']}",
+        invite_contact(session, contact_id),
+    )
 
 
 @router.post("/employers/{employer_id}/tier")
