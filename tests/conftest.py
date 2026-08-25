@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import subprocess
 import uuid
+from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -77,16 +78,9 @@ def database_url() -> str:
         conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}"'))
 
 
-@pytest.fixture
-def scratch_database():
-    """An empty throwaway database, with nothing applied to it.
-
-    For tests that have to COMMIT -- backup and the migration runner both shell
-    out to psql on their own connections, so they cannot see anything held in
-    the shared session's rolled-back transaction. Committing into that shared
-    database instead would leak rows into every later test, and audit_log is
-    append-only by rule, so the leak could not even be cleaned up afterwards.
-    """
+@contextmanager
+def _scratch_database():
+    """Create an empty database, yield its URL, and drop it afterwards."""
     admin = _admin_url()
     if admin is None:
         pytest.skip("no test database available (see scripts/testdb.sh)")
@@ -97,16 +91,43 @@ def scratch_database():
         conn.execute(text(f'CREATE DATABASE "{name}"'))
 
     base, _, query = admin.partition("?")
-    yield base.rsplit("/", 1)[0] + f"/{name}" + (f"?{query}" if query else "")
+    try:
+        yield base.rsplit("/", 1)[0] + f"/{name}" + (f"?{query}" if query else "")
+    finally:
+        with engine.connect() as conn:
+            conn.execute(
+                text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                     "WHERE datname = :db"),
+                {"db": name},
+            )
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
+        engine.dispose()
 
-    with engine.connect() as conn:
-        conn.execute(
-            text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                 "WHERE datname = :db"),
-            {"db": name},
-        )
-        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
-    engine.dispose()
+
+@pytest.fixture
+def scratch_database():
+    """An empty throwaway database, with nothing applied to it.
+
+    For tests that have to COMMIT -- backup and the migration runner both shell
+    out to psql on their own connections, so they cannot see anything held in
+    the shared session's rolled-back transaction. Committing into that shared
+    database instead would leak rows into every later test, and audit_log is
+    append-only by rule, so the leak could not even be cleaned up afterwards.
+    """
+    with _scratch_database() as url:
+        yield url
+
+
+@pytest.fixture(scope="module")
+def scratch_database_module():
+    """The same, shared across a module.
+
+    For read-only work like taking backups, where a per-test database means
+    applying every migration again -- twenty-one psql invocations each time,
+    which dominated the runtime of those tests.
+    """
+    with _scratch_database() as url:
+        yield url
 
 
 @pytest.fixture

@@ -34,25 +34,29 @@ def backup_dir(tmp_path) -> Path:
     return target
 
 
-@pytest.fixture
-def populated_db(scratch_database) -> str:
+@pytest.fixture(scope="module")
+def populated_db(scratch_database_module) -> str:
     """A migrated database with one committed candidate in it.
 
     Its own database, not the shared one: pg_dump connects separately and
     cannot see anything held in a rolled-back transaction, and committing into
     the shared database would leak an audit row that no later test can remove.
     """
-    for migration in sorted(
-        (Path(__file__).parent.parent / "migrations").glob("*.sql")
-    ):
-        result = subprocess.run(
-            ["psql", psql_dsn(scratch_database), "-q", "-v", "ON_ERROR_STOP=1",
-             "-f", str(migration)],
-            capture_output=True, text=True,
+    # One psql invocation rather than twenty-one: each migration file wraps
+    # itself in BEGIN/COMMIT, so they run sequentially in a single session.
+    combined = "\n".join(
+        path.read_text()
+        for path in sorted(
+            (Path(__file__).parent.parent / "migrations").glob("*.sql")
         )
-        assert result.returncode == 0, result.stderr
+    )
+    result = subprocess.run(
+        ["psql", psql_dsn(scratch_database_module), "-q", "-v", "ON_ERROR_STOP=1"],
+        input=combined, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
-    engine = create_engine(scratch_database, isolation_level="AUTOCOMMIT")
+    engine = create_engine(scratch_database_module, isolation_level="AUTOCOMMIT")
     try:
         with engine.connect() as conn:
             conn.execute(
@@ -72,7 +76,7 @@ def populated_db(scratch_database) -> str:
             )
     finally:
         engine.dispose()
-    return scratch_database
+    return scratch_database_module
 
 
 def take_backup(source_dsn: str, backup_dir: Path) -> tuple[Path, str]:
