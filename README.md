@@ -15,7 +15,7 @@ number is audited.
 
 ```bash
 docker compose up -d db                 # Postgres 16
-./scripts/migrate.sh                    # apply migrations in order
+./scripts/migrate.sh                    # apply whatever is missing
 
 python -m venv .venv && .venv/bin/pip install -e '.[dev]'
 cp .env.example .env                    # set DATA_RESIDENCY
@@ -47,6 +47,17 @@ scripts/        migrate.sh, testdb.sh, create_staff.py, backup.sh
 deploy/         Production stack: Postgres + app + Caddy (automatic TLS)
 docs/           DEPLOYMENT.md — the Rwanda VPS runbook
 ```
+
+## Migrations
+
+`./scripts/migrate.sh "$DSN"` applies whatever is missing and records each
+filename in `schema_migrations`, so it is safe against a live database that is
+some migrations behind — which is what every deploy after the first one looks
+like. Re-running is a no-op.
+
+Adopting a database that was migrated before tracking existed:
+`./scripts/migrate.sh "$DSN" --baseline N` records the first N files **without
+running them**.
 
 ## Data residency
 
