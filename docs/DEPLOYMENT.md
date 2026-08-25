@@ -149,8 +149,13 @@ a guess, and the day you discover it was wrong is the worst possible day.
 copy of the backups off the machine — a backup that burns with the building is
 not a backup.
 
-Test a restore into a scratch database before you need one. Quarterly is
-reasonable.
+Restores are tested automatically: `tests/test_backup.py` takes a real backup
+and restores it into a fresh database on every CI run, verifying that row counts
+match and that the audit hash chain still validates afterwards.
+
+That covers the mechanism. Still rehearse a restore **onto the real
+infrastructure** quarterly — what CI cannot test is whether you can find the
+passphrase under pressure.
 
 ## If there is a breach
 

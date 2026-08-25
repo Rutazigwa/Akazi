@@ -17,6 +17,7 @@ from app.routers import (
     data_rights,
     identity,
     inbound,
+    lmis,
     operations,
     pay,
     registry,
@@ -37,6 +38,7 @@ app.include_router(data_rights.router)
 app.include_router(registry.router)
 app.include_router(requests.router)
 app.include_router(inbound.router)
+app.include_router(lmis.router)
 app.include_router(pay.router)
 app.include_router(staff.router)
 app.include_router(web_router.router)

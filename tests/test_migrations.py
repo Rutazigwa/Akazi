@@ -11,9 +11,7 @@ protected is a shell script's behaviour and mocking it would prove nothing.
 
 from __future__ import annotations
 
-import os
 import subprocess
-import uuid
 from pathlib import Path
 
 import pytest
@@ -25,43 +23,18 @@ MIGRATION_COUNT = len(
 )
 
 
-def admin_dsn() -> str | None:
-    url = os.environ.get("TEST_DATABASE_URL")
-    if url:
-        return url.replace("postgresql+psycopg://", "postgresql://")
-    socket = "/var/lib/pgtest/run"
-    if Path(socket).is_dir():
-        return f"postgresql://postgres@/postgres?host={socket}&port=5433"
-    return None
+def psql_dsn(url: str) -> str:
+    return url.replace("postgresql+psycopg://", "postgresql://")
 
 
 @pytest.fixture
-def scratch_db():
-    """A throwaway database with nothing in it."""
-    admin = admin_dsn()
-    if admin is None:
-        pytest.skip("no test database available (see scripts/testdb.sh)")
+def scratch_db(scratch_database) -> str:
+    """The shared empty-database fixture, as a psql-style DSN.
 
-    name = f"akazi_mig_{uuid.uuid4().hex[:8]}"
-    engine = create_engine(
-        admin.replace("postgresql://", "postgresql+psycopg://"),
-        isolation_level="AUTOCOMMIT",
-    )
-    with engine.connect() as conn:
-        conn.execute(text(f'CREATE DATABASE "{name}"'))
-
-    base, _, query = admin.partition("?")
-    dsn = base.rsplit("/", 1)[0] + f"/{name}" + (f"?{query}" if query else "")
-    yield dsn
-
-    with engine.connect() as conn:
-        conn.execute(
-            text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                 "WHERE datname = :db"),
-            {"db": name},
-        )
-        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
-    engine.dispose()
+    migrate.sh shells out to psql, which does not understand SQLAlchemy's
+    +psycopg driver suffix.
+    """
+    return psql_dsn(scratch_database)
 
 
 def run(dsn: str, *args: str) -> str:

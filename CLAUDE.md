@@ -309,6 +309,26 @@ permission error by connecting as the owner: an app connected as owner can
 disable the audit-log rules, which is the tampering the hash chain exists to
 detect.
 
+### Reporting out -- suppression is not optional
+
+Anything leaving for the LMIS is grouped and disclosure-controlled. Never
+include `candidate_id`: it is stable across exports, so two reports would let
+someone track an individual between them. Never lower `MIN_CELL` without
+deciding, deliberately, that a group that size is unidentifiable in a Rwandan
+district -- "aggregate" is not a synonym for "safe".
+
+Reporting consent is a separate purpose from placement consent. Do not treat
+one as implying the other.
+
+### Tests that must COMMIT need their own database
+
+The `session` fixture rolls everything back, which is what keeps tests
+isolated. Anything that shells out (backup, migrate.sh) connects separately
+and cannot see that transaction, so it needs `scratch_database`. Do not commit
+into the shared test database to make such a test work: rows leak into every
+later test, and `audit_log` is append-only by rule, so the leak cannot even be
+cleaned up. That exact mistake broke the audit-chain test.
+
 ### Pay records are claims, not facts
 
 `paid_on` is the employer's claim; `worker_confirmed` is the worker's answer.

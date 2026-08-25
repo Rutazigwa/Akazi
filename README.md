@@ -35,7 +35,7 @@ app/db.py       Engine, session scope, audit attribution
 app/matching/   The v1 matching engine, transport estimation, DB loading
 app/messaging/  Outbox, templates, providers, dispatcher
 app/operations/ Registration, work requests, offers, attendance, guarantee,
-                data subject rights
+                pay, data subject rights, escalations, LMIS reporting
 app/auth.py     Passwords, sessions, lockout
 app/mfa.py      TOTP enrolment, session elevation, replay guard
 app/deps.py     Session + authenticated-staff dependencies
@@ -308,8 +308,12 @@ Postgres on an internal Docker network with no published port, and Caddy in fron
 for automatic TLS. Bearer tokens over plaintext HTTP are simply readable, so
 there is no acceptable non-TLS deployment of this system.
 
-`scripts/backup.sh` refuses to write an unencrypted dump and verifies that what
-it wrote decrypts before reporting success.
+`scripts/backup.sh` refuses to write an unencrypted dump, and verifies the
+backup by reading the whole stream and checking for pg_dump's completion
+marker — which catches truncation, where the first bytes of a partial dump look
+exactly like a good one. `tests/test_backup.py` takes a real backup and restores
+it into a fresh database on every CI run, checking that row counts match and the
+audit hash chain still verifies on the far side.
 
 ## Staff administration
 
@@ -407,6 +411,32 @@ week that way and read exactly what would have gone out before any of it reaches
 a real person. A live WhatsApp Business provider is deliberately not written: the
 API shape depends on which BSP you sign with, and guessing produces code that
 looks finished and has never run. It needs to satisfy one protocol method.
+
+## Reporting to the LMIS
+
+The Cabinet-approved national Labour Market Information System consolidates
+placement outcomes from government, the private sector and training providers.
+We generate exactly that — so the position is **supplier, not competitor**.
+`GET /lmis/report` and `/lmis/report.csv` produce a submission for a date window.
+
+**Nothing identifying leaves.** No names, national IDs, dates of birth, phone
+numbers or home coordinates — and no `candidate_id` either: the surrogate key is
+stable across exports, so publishing it would let anyone holding two reports
+track an individual between them.
+
+**Small cells are suppressed before the file leaves**, not left to whoever
+receives it. One woman placed in one sector of one district is not anonymous to
+anyone who works there; groups under five are reported as `<5`. Headline totals
+are *not* suppressed — a national figure identifies nobody, and suppressing it
+would make the report useless.
+
+Consent for the `reporting` purpose is tracked separately from placement
+consent, because agreeing to be placed is not agreeing to appear in a national
+dataset. If the LMIS ever asks for record-level data, that is the population that
+could lawfully be included — and it will be smaller than the placement count.
+
+The report includes **net earnings after transport**, which no competitor
+publishes and the LMIS has no other source for.
 
 ## Pay
 

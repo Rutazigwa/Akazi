@@ -38,12 +38,28 @@ pg_dump --no-owner --no-privileges "$DSN" \
 chmod 600 "$OUT"
 echo "wrote $OUT ($(du -h "$OUT" | cut -f1))"
 
-# Verify the file decrypts and the archive is intact. An unverified backup is
-# a guess, and the day you find out is the worst possible day.
-if openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-       -pass env:BACKUP_PASSPHRASE -in "$OUT" | gunzip | head -c 200 \
-       | grep -q "PostgreSQL database dump"; then
-    echo "verified: decrypts and unpacks"
+# Verify the file decrypts and unpacks whole. An unverified backup is a guess,
+# and the day you find out is the worst possible day.
+#
+# The check reads the ENTIRE stream and looks for pg_dump's completion marker,
+# which it only writes after the last row. That proves the file is not
+# truncated -- a partial dump decrypts and unpacks perfectly happily, and its
+# first bytes look exactly like a good one.
+#
+# It deliberately does not pipe into `head`: head exits after its bytes, the
+# upstream processes take SIGPIPE, and under `set -o pipefail` the whole
+# pipeline reports failure. That produced false alarms on perfectly good
+# backups -- and a verification that cries wolf is worse than none, because it
+# trains whoever reads the cron mail to ignore it.
+verify() {
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+        -pass env:BACKUP_PASSPHRASE -in "$OUT" 2>/dev/null \
+        | gunzip 2>/dev/null \
+        | grep -c "PostgreSQL database dump complete" || true
+}
+
+if [ "$(verify)" -ge 1 ]; then
+    echo "verified: decrypts, unpacks, and the dump is complete"
 else
     echo "VERIFICATION FAILED -- do not rely on $OUT" >&2
     exit 1

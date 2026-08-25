@@ -78,6 +78,38 @@ def database_url() -> str:
 
 
 @pytest.fixture
+def scratch_database():
+    """An empty throwaway database, with nothing applied to it.
+
+    For tests that have to COMMIT -- backup and the migration runner both shell
+    out to psql on their own connections, so they cannot see anything held in
+    the shared session's rolled-back transaction. Committing into that shared
+    database instead would leak rows into every later test, and audit_log is
+    append-only by rule, so the leak could not even be cleaned up afterwards.
+    """
+    admin = _admin_url()
+    if admin is None:
+        pytest.skip("no test database available (see scripts/testdb.sh)")
+
+    name = f"akazi_scratch_{uuid.uuid4().hex[:8]}"
+    engine = create_engine(admin, isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        conn.execute(text(f'CREATE DATABASE "{name}"'))
+
+    base, _, query = admin.partition("?")
+    yield base.rsplit("/", 1)[0] + f"/{name}" + (f"?{query}" if query else "")
+
+    with engine.connect() as conn:
+        conn.execute(
+            text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                 "WHERE datname = :db"),
+            {"db": name},
+        )
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
+    engine.dispose()
+
+
+@pytest.fixture
 def session(database_url) -> Session:
     """A session rolled back after each test, so tests cannot leak into each other."""
     engine = create_engine(database_url)
