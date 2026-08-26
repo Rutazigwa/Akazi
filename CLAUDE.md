@@ -552,6 +552,49 @@ in is the setup for a convincing fake login page.
   opposite facts: a candidate with no home location passes the transport
   filter by default, and the coordinator has to see that before offering.
 
+### A test connected as the owner proves nothing about privileges
+
+The database owner bypasses every grant. So a suite that connects as the owner
+-- which is every fixture except `restricted_session` -- cannot see a
+privilege bug at all, and four of them shipped green:
+
+| What failed under the real role | Why the grant was missing |
+|---|---|
+| Creating any staff account | `staff` had no `INSERT` grant at all |
+| Registering a candidate | `INSERT ... RETURNING candidate_id` needs `SELECT` on that column, and `SELECT` had been revoked wholesale |
+| Every inbound reply from a worker | the sender lookup read `candidate_identity` directly |
+| Accepting an erasure request | the already-erased check reads `erased_at` |
+
+The first three broke the system's core paths outright: on a deployment using
+the role model nobody could be onboarded, nobody could be registered, and every
+message a worker sent was dropped.
+
+Asserting grants from the migration source does not catch this -- it proves
+what was granted, not that what the application does is permitted. The only
+thing that catches it is running the real writes as `akazi_app`, which is what
+`tests/test_restricted_role.py` does. **Anything touching identity data, or any
+new table, gets a test there.** When a grant looks unnecessary, check whether a
+`RETURNING` clause or a subselect needs it before removing it.
+
+### Reading identity data records why, not only who
+
+`read_candidate_identity()` takes a purpose (`operations`, `placement`,
+`support`, `data_request`, `erasure`, `reporting`) and rejects anything else.
+"Who looked at a national ID number and when" was never the whole question --
+the first thing an auditor asks is what for, and a log that cannot separate a
+coordinator staffing a shift from a bulk export is not much of a safeguard.
+
+Resolving an inbound phone number to a person goes through
+`resolve_inbound_sender()` for the same reason: matching a number to a human
+being *is* a read of their identity record, and it audits on a hit. A number
+matching nobody writes nothing -- there is no record to attach a read to, and
+inventing one is noise an auditor has to wade through.
+
+Only two columns of `candidate_identity` are directly readable, `candidate_id`
+and `erased_at`, both record metadata rather than facts about a person. Every
+identifying column stays behind the audited function. A test asserts that list
+exactly, so if it grows it grew deliberately.
+
 ### Auth invariants -- do not relax these
 
 - **Identity data requires MFA on the current session.** A password alone

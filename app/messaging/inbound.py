@@ -156,19 +156,18 @@ def record_inbound(
     row = session.execute(
         text(
             """
-            -- The phone parameter is both an inserted value and a comparison
-            -- operand, so it is cast once explicitly: without it PostgreSQL
-            -- deduces text in one place and varchar in the other and refuses.
-            WITH incoming AS (SELECT CAST(:phone AS varchar(20)) AS phone)
+            -- The sender is resolved through resolve_inbound_sender(), not by
+            -- reading candidate_identity here. Matching a phone number to a
+            -- person is a read of their identity record and has to leave a
+            -- trace, which is the same reason the outbound direction goes
+            -- through message_recipient_phone(). See migration 032.
+            WITH sender AS (SELECT * FROM resolve_inbound_sender(:phone))
             INSERT INTO inbound_messages (from_phone, channel, body, provider_ref,
                                           candidate_id, contact_id)
-            SELECT incoming.phone, CAST(:channel AS message_channel), :body, :ref,
-                   (SELECT ci.candidate_id FROM candidate_identity ci
-                     WHERE ci.phone_primary = incoming.phone
-                       AND ci.erased_at IS NULL LIMIT 1),
-                   (SELECT ec.contact_id FROM employer_contacts ec
-                     WHERE ec.phone = incoming.phone AND ec.is_active LIMIT 1)
-              FROM incoming
+            SELECT CAST(:phone AS varchar(20)),
+                   CAST(:channel AS message_channel), :body, :ref,
+                   sender.candidate_id, sender.contact_id
+              FROM sender
             ON CONFLICT (provider_ref) DO NOTHING
             RETURNING inbound_id
             """

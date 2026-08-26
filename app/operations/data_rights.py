@@ -201,7 +201,7 @@ def export_candidate_data(session: Session, candidate_id: UUID) -> dict:
     export is itself recorded in the access log -- as it should be.
     """
     identity = session.execute(
-        text("SELECT * FROM read_candidate_identity(:cid)"),
+        text("SELECT * FROM read_candidate_identity(:cid, 'data_request')"),
         {"cid": str(candidate_id)},
     ).mappings().first()
 
@@ -282,7 +282,8 @@ def export_candidate_data(session: Session, candidate_id: UUID) -> dict:
         ),
         "identity_access_log": rows(
             """
-            SELECT a.action, a.occurred_at, s.full_name AS staff_name
+            SELECT a.action, a.occurred_at, s.full_name AS staff_name,
+                   COALESCE(a.detail ->> 'purpose', 'unrecorded') AS purpose
               FROM audit_log a
               LEFT JOIN staff s ON s.staff_id = a.staff_id
              WHERE a.table_name = 'candidate_identity' AND a.record_id = :cid

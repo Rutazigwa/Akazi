@@ -127,7 +127,7 @@ def test_identity_reads_still_work_through_the_audited_function(
     granted = session.execute(
         text(
             "SELECT has_function_privilege('app_identity', "
-            "'read_candidate_identity(uuid)', 'EXECUTE')"
+            "'read_candidate_identity(uuid, text)', 'EXECUTE')"
         )
     ).scalar_one()
     assert granted is True
@@ -140,3 +140,108 @@ def test_identity_reads_still_work_through_the_audited_function(
     ).scalar_one()
     assert table is False
     assert cid
+
+
+# --- grants derived from what the application actually does ----------------
+
+def _write_targets() -> dict[str, set[str]]:
+    """Tables the application INSERTs into or UPDATEs, read from the source.
+
+    Derived rather than listed, so a new write target cannot arrive without a
+    matching grant. Listing them by hand is how the staff table ended up
+    readable, updatable and not insertable -- correct in every test, broken on
+    the first deploy that used the role model.
+    """
+    import pathlib
+    import re
+
+    targets: dict[str, set[str]] = {"INSERT": set(), "UPDATE": set()}
+    for path in pathlib.Path("app").rglob("*.py"):
+        source = path.read_text()
+        for table in re.findall(r"INSERT\s+INTO\s+([a-z_]+)", source):
+            targets["INSERT"].add(table)
+        for table in re.findall(r"UPDATE\s+([a-z_]+)\s+SET", source):
+            targets["UPDATE"].add(table)
+    return targets
+
+
+# The application connects as one role holding both, so a grant to either
+# satisfies it. See docs/DEPLOYMENT.md on splitting them across connections.
+APP_ROLES = ("app_operations", "app_identity")
+
+
+def test_the_app_role_can_write_everything_the_app_writes(session):
+    targets = _write_targets()
+    assert targets["INSERT"], "found no INSERT targets -- the parser is broken"
+
+    missing = []
+    for privilege, tables in targets.items():
+        for table in sorted(tables):
+            exists = session.execute(
+                text("SELECT to_regclass(:t)"), {"t": f"public.{table}"}
+            ).scalar_one()
+            if exists is None:
+                continue  # a CTE or alias, not a real table
+            granted = any(
+                session.execute(
+                    text("SELECT has_table_privilege(:r, :t, :p)"),
+                    {"r": role, "t": table, "p": privilege},
+                ).scalar_one()
+                for role in APP_ROLES
+            )
+            if not granted:
+                missing.append(f"{privilege} on {table}")
+
+    assert missing == [], (
+        "the application writes to tables the app role cannot: "
+        f"{missing} -- add a GRANT in a migration"
+    )
+
+
+def test_every_function_the_app_calls_is_executable(session):
+    """SECURITY DEFINER functions are useless if the caller cannot EXECUTE."""
+    import pathlib
+    import re
+
+    called = set()
+    for path in pathlib.Path("app").rglob("*.py"):
+        source = path.read_text()
+        called.update(re.findall(r"SELECT\s+\*?\s*FROM\s+([a-z_]+)\(", source))
+        called.update(re.findall(r"SELECT\s+([a-z_]+)\(", source))
+
+    ours = session.execute(
+        text(
+            "SELECT p.proname FROM pg_proc p "
+            "JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname = 'public'"
+        )
+    ).scalars().all()
+
+    missing = []
+    for name in sorted(called & set(ours)):
+        granted = any(
+            session.execute(
+                text(
+                    "SELECT bool_or(has_function_privilege(:r, p.oid, 'EXECUTE')) "
+                    "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+                    "WHERE n.nspname = 'public' AND p.proname = :f"
+                ),
+                {"r": role, "f": name},
+            ).scalar_one()
+            for role in APP_ROLES
+        )
+        if not granted:
+            missing.append(name)
+
+    assert missing == [], (
+        f"the application calls functions the app role cannot execute: {missing}"
+    )
+
+
+def test_the_app_role_still_cannot_read_identity_directly(session):
+    """The grants above must never widen this one."""
+    for role in APP_ROLES:
+        assert session.execute(
+            text("SELECT has_table_privilege(:r, 'candidate_identity', 'SELECT')"),
+            {"r": role},
+        ).scalar_one() is False

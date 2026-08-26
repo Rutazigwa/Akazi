@@ -346,3 +346,51 @@ def client(api, staff_login):
     )
     assert elevated.status_code == 200, elevated.text
     return api
+
+
+@pytest.fixture(scope="module")
+def restricted_url(scratch_database_module) -> str:
+    """A fully migrated database, connected as the unprivileged app role.
+
+    Every other fixture connects as the database owner, who bypasses grants
+    entirely. That is why a whole class of defect stayed invisible: the app
+    could not create a staff account, could not register a candidate, could
+    not resolve an inbound reply and could not accept an erasure request, and
+    the suite was green throughout. Anything exercised through this fixture is
+    exercised the way production runs it.
+    """
+    dsn = scratch_database_module.replace("postgresql+psycopg://", "postgresql://")
+    root = Path(__file__).parent.parent
+
+    applied = subprocess.run(
+        [str(root / "scripts" / "migrate.sh"), dsn],
+        capture_output=True, text=True,
+    )
+    assert applied.returncode == 0, applied.stderr
+
+    role = subprocess.run(
+        ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-q",
+         "-c", "SELECT set_config('akazi.app_password', 'test-only', false);",
+         "-f", str(root / "scripts" / "create_app_role.sql")],
+        capture_output=True, text=True,
+    )
+    assert role.returncode == 0, role.stderr
+
+    # Swap the connecting user for the restricted login role. Local socket
+    # connections authenticate by trust here, so no password is carried.
+    scheme, _, rest = scratch_database_module.partition("://")
+    _, _, hostpart = rest.rpartition("@") if "@" in rest else ("", "", rest)
+    return f"{scheme}://akazi_app@{hostpart}"
+
+
+@pytest.fixture(scope="module")
+def restricted_session(restricted_url):
+    """A committing session on the restricted database.
+
+    Deliberately not wrapped in a rollback: privilege failures surface at
+    statement time, and the point of these tests is to run the real writes.
+    """
+    engine = create_engine(restricted_url)
+    with Session(engine) as s:
+        yield s
+    engine.dispose()
