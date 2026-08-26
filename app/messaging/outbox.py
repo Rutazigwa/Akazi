@@ -24,12 +24,13 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.clock import KIGALI as _KIGALI
 from app.messaging.providers import MessageProvider, RecordingProvider
 
 logger = logging.getLogger("akazi.messaging")
 
-# Kigali is UTC+2 year-round -- no daylight saving to track.
-KIGALI = timezone(timedelta(hours=2))
+# One definition, in app/clock.py, so the offset cannot drift between modules.
+KIGALI = _KIGALI
 QUIET_FROM = time(21, 0)
 QUIET_UNTIL = time(7, 0)
 

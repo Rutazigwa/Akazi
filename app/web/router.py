@@ -20,6 +20,7 @@ from uuid import UUID
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from app.clock import kigali_today
 from sqlalchemy import text
 
 from app.auth import AuthError, login, logout
@@ -84,7 +85,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 def _render(request: Request, name: str, staff, **ctx) -> HTMLResponse:
     return templates.TemplateResponse(
-        request, name, {"staff": staff, "today": date.today().isoformat(), **ctx}
+        request, name, {"staff": staff, "today": kigali_today().isoformat(), **ctx}
     )
 
 
@@ -245,7 +246,7 @@ def dashboard(request: Request, session: SessionDep, staff: WebStaffDep):
         unread_replies=needs_attention(session),
         overdue_pay=overdue_pay(session),
         guarantees=open_guarantees(session),
-        follow_ups=due_follow_ups(session, date.today()),
+        follow_ups=due_follow_ups(session, kigali_today()),
         requests=open_requests(session),
         scorecard_rows=[
             (label, card[key], target) for key, label, target in SCORECARD_LABELS
@@ -515,7 +516,7 @@ def reports_page(request: Request, session: SessionDep, staff: WebStaffDep):
         performance=response_performance(session),
         consent=reporting_consent_counts(session),
         min_cell=MIN_CELL,
-        default_from=(date.today() - timedelta(days=90)).isoformat(),
+        default_from=(kigali_today() - timedelta(days=90)).isoformat(),
         **_flash(request),
     )
 

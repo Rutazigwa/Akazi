@@ -359,6 +359,21 @@ metric's entire reason to exist. Open a pay period when terms are known, not
 when money lands: a record created only at payment can never show the payment
 that failed to happen.
 
+### Dates belong to Kigali, never to the server
+
+Never use `date.today()` or `CURRENT_DATE` for anything a coordinator or
+worker would call today. Use `kigali_today()` -- `app/clock.py`, and the SQL
+function of the same name. Servers run on UTC and Kigali is UTC+2, so those
+two hours before midnight UTC are 00:00-02:00 local: a late shift ending,
+attendance being logged, and every date field a day behind.
+
+`tests/test_clock.py` fails the build if either reappears in a user-facing
+path. Keep it that way -- the bug is correct for twenty-two hours a day,
+which is exactly why nobody would find it.
+
+`KIGALI` is defined once in `app/clock.py`. Two modules disagreeing about
+the offset would be worse than one being wrong consistently.
+
 ### Read-then-write is a race until it is serialised
 
 Three checks in this system had the shape "count or look, then insert", and

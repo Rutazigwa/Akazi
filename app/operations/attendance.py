@@ -108,9 +108,7 @@ def complete_placement(
                    -- Never before it started: a placement can be active with a
                    -- future start date (the shift reminder depends on that),
                    -- and chk_placement_dates rightly refuses the inversion.
-                   ended_on = GREATEST(
-                       COALESCE(:ended_on, CURRENT_DATE),
-                       COALESCE(started_on, CURRENT_DATE))
+                   ended_on = fn_placement_end_date(:ended_on, started_on)
              WHERE placement_id = :pid AND status = 'active'
             RETURNING candidate_id
             """
@@ -141,9 +139,7 @@ def terminate_placement(
             """
             UPDATE placements
                SET status = 'terminated',
-                   ended_on = GREATEST(
-                       COALESCE(:ended_on, CURRENT_DATE),
-                       COALESCE(started_on, CURRENT_DATE))
+                   ended_on = fn_placement_end_date(:ended_on, started_on)
              WHERE placement_id = :pid AND status IN ('accepted','active')
             RETURNING candidate_id
             """

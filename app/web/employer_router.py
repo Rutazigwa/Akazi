@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Cookie, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from app.clock import kigali_today
 from sqlalchemy import text
 
 from app.deps import SessionDep
@@ -53,7 +54,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 def _render(request: Request, name: str, employer, **ctx) -> HTMLResponse:
     return templates.TemplateResponse(
         request, f"employer/{name}",
-        {"employer": employer, "today": date.today().isoformat(), **ctx},
+        {"employer": employer, "today": kigali_today().isoformat(), **ctx},
     )
 
 

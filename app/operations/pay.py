@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
+from app.clock import kigali_today
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -241,7 +242,7 @@ def overdue_pay(session: Session, as_of: date | None = None) -> list[dict]:
              ORDER BY pr.due_on ASC, pr.net_rwf DESC
             """
         ),
-        {"as_of": as_of or date.today()},
+        {"as_of": as_of or kigali_today()},
     ).mappings()
     return [dict(r) for r in rows]
 

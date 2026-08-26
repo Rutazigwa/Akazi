@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import date, time
 from uuid import UUID
 
+from app.clock import kigali_today
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -109,7 +110,7 @@ def set_employer_tier(
                SET tier = CAST(:tier AS employer_tier),
                    safety_verified = COALESCE(:verified, safety_verified),
                    verified_at = CASE
-                       WHEN :verified IS TRUE THEN COALESCE(verified_at, CURRENT_DATE)
+                       WHEN :verified IS TRUE THEN COALESCE(verified_at, kigali_today())
                        WHEN :verified IS FALSE THEN NULL
                        ELSE verified_at END
              WHERE employer_id = :eid
@@ -182,7 +183,7 @@ def register_candidate(
     table, so an under-16 registration fails here rather than surfacing later as
     a mysteriously unmatched candidate.
     """
-    if _age_on(date_of_birth, date.today()) < MINIMUM_AGE:
+    if _age_on(date_of_birth, kigali_today()) < MINIMUM_AGE:
         raise RegistryError(
             f"candidate is under the minimum working age of {MINIMUM_AGE}"
         )

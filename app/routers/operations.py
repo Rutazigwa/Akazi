@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from app.clock import kigali_today
 from sqlalchemy import text
 
 from app.deps import SessionDep, StaffDep
@@ -206,7 +207,7 @@ def guarantees(session: SessionDep, staff: StaffDep):
 @router.get("/follow-ups/due")
 def follow_ups(session: SessionDep, staff: StaffDep,
                as_of: date | None = None):
-    return {"due": due_follow_ups(session, as_of or date.today())}
+    return {"due": due_follow_ups(session, as_of or kigali_today())}
 
 
 @router.post("/follow-ups/{follow_up_id}/complete")

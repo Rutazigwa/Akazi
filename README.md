@@ -59,6 +59,22 @@ Adopting a database that was migrated before tracking existed:
 `./scripts/migrate.sh "$DSN" --baseline N` records the first N files **without
 running them**.
 
+## Dates are Kigali's, not the server's
+
+`date.today()` and `CURRENT_DATE` return the *server's* date, and servers run on
+UTC. Kigali is UTC+2, so between 22:00 and midnight UTC it is already tomorrow
+there — and every date this system defaulted, compared or recorded was a day
+behind for two hours every night. Those two hours are **00:00 to 02:00 local**,
+exactly when a late shift finishes and someone logs attendance.
+
+Everything user-facing goes through `kigali_today()` — `app/clock.py` in Python,
+a matching SQL function in migration 029. Two tests fail the build if a
+`date.today()` or `CURRENT_DATE` reappears in a user-facing path, because the
+bug is invisible for twenty-two hours a day.
+
+Setting the database timezone would have fixed it in one line, but silently: a
+deploy that missed the setting would reintroduce it with nothing to notice.
+
 ## Data residency
 
 Law No. 058/2021 requires personal data to be stored in Rwanda unless a

@@ -124,6 +124,16 @@ holding only `app_identity`, with the first holding only `app_operations`, is
 the next hardening step and would make an operational-code bug physically
 unable to reach a national ID number.
 
+## Server timezone
+
+The application does not depend on it -- every user-facing date goes through
+`kigali_today()`, which asks for `Africa/Kigali` explicitly. Leaving the server
+on UTC is fine and is what the compose file assumes.
+
+Do not "fix" it by setting the database timezone instead. That would work, and
+it would work silently: the next deploy that missed the setting would put every
+date a day behind for two hours each night, with nothing to notice it.
+
 ## Network posture
 
 Postgres is on an `internal: true` Docker network and is **not** published to
