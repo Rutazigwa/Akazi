@@ -397,6 +397,24 @@ decision onto the worker, and prior behaviour feeds the ranking.
   assaulted. A live run once caught "keeps touching me" slipping past a literal
   phrase match -- add variants, never narrow them.
 
+### Enum values that are deliberately never written
+
+Three remain, and each is a decision rather than an oversight. Do not "wire
+them up" without revisiting the reasoning:
+
+- `placement_status.replaced` -- a covered no-show stays `no_show`; the
+  replacement chain is the evidence. See the no_show/replaced note above.
+- `message_status.sending` -- dispatch claims a row with `FOR UPDATE SKIP
+  LOCKED` and resolves it in the same transaction, so there is no window for
+  a transient state. PostgreSQL cannot drop an enum value, so it stays.
+- `candidate_status.trained` -- there is no training workflow yet. The
+  blueprint's cohort management is genuinely unbuilt, and this value is
+  waiting for it rather than being unused by mistake.
+
+Re-run the audit after schema changes: list every enum value and check
+whether app code ever writes it. It has found real bugs twice -- the
+double-booking, and assessment scores exceeding their own maximum.
+
 ### Messaging invariants
 
 - **Queue inside the causing transaction; send separately.** Never send inline:

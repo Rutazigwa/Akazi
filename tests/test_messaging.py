@@ -316,7 +316,8 @@ def test_a_consenting_candidate_is_messaged(
     phone, body, channel = provider.sent[0]
     assert phone.startswith("+250")
     assert "work offer" in body
-    assert channel == "whatsapp"
+    # The fixture candidate has no smartphone on record, so SMS is right.
+    assert channel == "sms"
 
 
 def test_sending_a_message_is_audited_as_an_identity_read(

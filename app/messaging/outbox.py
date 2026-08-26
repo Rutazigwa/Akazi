@@ -49,11 +49,14 @@ class DispatchReport:
     failed: int = 0
     suppressed: int = 0
     deferred: int = 0
+    # Moved from WhatsApp to SMS and requeued -- neither sent nor failed yet.
+    fell_back: int = 0
 
     def __str__(self) -> str:
         return (
             f"sent={self.sent} failed={self.failed} "
-            f"suppressed={self.suppressed} deferred={self.deferred}"
+            f"suppressed={self.suppressed} deferred={self.deferred} "
+            f"fell_back={self.fell_back}"
         )
 
 
@@ -74,6 +77,26 @@ def next_send_window(moment: datetime | None = None) -> datetime:
     )
 
 
+def preferred_channel(session: Session, candidate_id: UUID | None) -> str:
+    """WhatsApp where we know they can receive it, SMS otherwise.
+
+    has_smartphone is asked at registration and was never used. A meaningful
+    share of this cohort is on low-storage handsets where WhatsApp is not
+    installed -- sending an offer they cannot receive is the same as not
+    telling them the work exists.
+
+    Employer contacts default to WhatsApp; they are on laptops and good phones
+    by assumption, and the blueprint rules out anything more for them.
+    """
+    if candidate_id is None:
+        return "whatsapp"
+    has_smartphone = session.execute(
+        text("SELECT has_smartphone FROM candidates WHERE candidate_id = :cid"),
+        {"cid": str(candidate_id)},
+    ).scalar_one_or_none()
+    return "whatsapp" if has_smartphone else "sms"
+
+
 def queue(
     session: Session,
     *,
@@ -82,7 +105,7 @@ def queue(
     candidate_id: UUID | None = None,
     contact_id: UUID | None = None,
     placement_id: UUID | None = None,
-    channel: str = "whatsapp",
+    channel: str | None = None,
     scheduled_for: datetime | None = None,
 ) -> UUID | None:
     """Add a message to the outbox.
@@ -93,6 +116,9 @@ def queue(
     """
     if (candidate_id is None) == (contact_id is None):
         raise MessagingError("a message needs exactly one recipient")
+
+    if channel is None:
+        channel = preferred_channel(session, candidate_id)
 
     row = session.execute(
         text(
@@ -197,6 +223,7 @@ def dispatch(
             failed=report.failed + (outcome == "failed"),
             suppressed=report.suppressed + (outcome == "suppressed"),
             deferred=report.deferred,
+            fell_back=report.fell_back + (outcome == "fell_back"),
         )
     return report
 
@@ -255,6 +282,34 @@ def _dispatch_one(
 
     attempts = message["attempts"] + 1
     exhausted = not result.retryable or attempts >= MAX_ATTEMPTS
+
+    # The blueprint's SMS fallback. A permanent WhatsApp failure usually means
+    # the number is not on WhatsApp, which SMS does not care about -- so the
+    # message goes back in the queue on the other channel rather than being
+    # written off. Once, because a message already on SMS has nowhere left to
+    # fall back to.
+    if exhausted and message["channel"] == "whatsapp":
+        session.execute(
+            text(
+                """
+                UPDATE messages
+                   SET channel = 'sms', attempts = 0, status = 'queued',
+                       scheduled_for = :now, last_attempt_at = :now,
+                       last_error = :error
+                 WHERE message_id = :mid
+                """
+            ),
+            {
+                "mid": str(message_id), "now": moment,
+                "error": f"whatsapp failed ({result.error}); falling back to SMS",
+            },
+        )
+        logger.info(
+            "message %s falling back to SMS after whatsapp failure: %s",
+            message_id, result.error,
+        )
+        return "fell_back"
+
     if exhausted:
         session.execute(
             text(
@@ -293,6 +348,59 @@ def _dispatch_one(
         },
     )
     return "failed"
+
+
+def record_delivery(
+    session: Session, provider_ref: str, delivered: bool,
+    error: str | None = None,
+) -> bool:
+    """Apply a provider's delivery receipt. Returns False if we do not know it.
+
+    'Sent' means the provider accepted it; 'delivered' means it reached the
+    handset. The gap between them is where a wrong number or a phone that has
+    been off for a week lives -- and a shift reminder that was accepted but
+    never delivered is indistinguishable from one that arrived, unless this is
+    recorded.
+    """
+    updated = session.execute(
+        text(
+            """
+            UPDATE messages
+               SET status = CASE WHEN :delivered THEN 'delivered'::message_status
+                                 ELSE 'failed'::message_status END,
+                   delivered_at = CASE WHEN :delivered THEN clock_timestamp() END,
+                   last_error = COALESCE(:error, last_error)
+             WHERE provider_ref = :ref
+               AND status IN ('sent','delivered','failed')
+            RETURNING message_id
+            """
+        ),
+        {"ref": provider_ref, "delivered": delivered, "error": error},
+    ).scalar_one_or_none()
+    return updated is not None
+
+
+def undelivered(session: Session, older_than_minutes: int = 60) -> list[dict]:
+    """Accepted by the provider, never confirmed as delivered.
+
+    Worth a coordinator's attention on anything time-critical: a shift
+    reminder in this state may simply not have arrived.
+    """
+    rows = session.execute(
+        text(
+            """
+            SELECT m.message_id, m.template_key, m.channel::text AS channel,
+                   m.sent_at, c.display_name
+              FROM messages m
+              LEFT JOIN candidates c ON c.candidate_id = m.candidate_id
+             WHERE m.status = 'sent'
+               AND m.sent_at < now() - make_interval(mins => :mins)
+             ORDER BY m.sent_at
+            """
+        ),
+        {"mins": older_than_minutes},
+    ).mappings()
+    return [dict(r) for r in rows]
 
 
 def outbox_summary(session: Session) -> list[dict]:

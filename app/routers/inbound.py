@@ -22,8 +22,13 @@ from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.deps import SessionDep, StaffDep
-from app.messaging.inbound import handle, handle_pending, needs_attention
-from app.messaging.inbound import record_inbound
+from app.messaging.inbound import (
+    handle,
+    handle_pending,
+    needs_attention,
+    record_inbound,
+)
+from app.messaging.outbox import record_delivery, undelivered
 from app.operations.escalations import (
     EscalationError,
     acknowledge,
@@ -40,6 +45,12 @@ class InboundPayload(BaseModel):
     body: str = Field(max_length=4000)
     channel: str = Field(default="whatsapp", pattern="^(whatsapp|sms)$")
     provider_ref: str | None = Field(default=None, max_length=120)
+
+
+class DeliveryReceipt(BaseModel):
+    provider_ref: str = Field(max_length=120)
+    delivered: bool
+    error: str | None = Field(default=None, max_length=500)
 
 
 class Resolution(BaseModel):
@@ -74,6 +85,44 @@ def inbound_webhook(
         return {"accepted": True, "duplicate": True}
 
     return {"accepted": True, "outcome": handle(session, inbound_id)}
+
+
+@router.post("/webhooks/delivery", status_code=202)
+def delivery_webhook(
+    body: DeliveryReceipt,
+    session: SessionDep,
+    x_webhook_secret: Annotated[str | None, Header()] = None,
+):
+    """A provider reporting whether a message reached the handset.
+
+    Same shared secret as the inbound webhook, and the same reasoning: this
+    endpoint only annotates a message we already sent. An unknown reference is
+    reported back rather than guessed at -- silently accepting receipts for
+    messages we have no record of would make the delivery numbers meaningless.
+    """
+    settings = get_settings()
+    if not settings.inbound_webhook_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="delivery webhook is not configured",
+        )
+    if not x_webhook_secret or not secrets.compare_digest(
+        x_webhook_secret, settings.inbound_webhook_secret
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="invalid webhook secret")
+
+    known = record_delivery(
+        session, body.provider_ref, body.delivered, body.error
+    )
+    return {"accepted": True, "known_message": known}
+
+
+@router.get("/messages/undelivered")
+def list_undelivered(session: SessionDep, staff: StaffDep,
+                     older_than_minutes: int = 60):
+    """Accepted by the provider, never confirmed as reaching the handset."""
+    return {"undelivered": undelivered(session, older_than_minutes)}
 
 
 @router.post("/inbound/process")

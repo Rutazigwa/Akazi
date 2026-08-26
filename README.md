@@ -443,6 +443,24 @@ sent; nothing goes out between 21:00 and 07:00 Kigali; and a placement that was
 declined, replaced or no-showed has its queued messages cancelled — a reminder
 for a job that is not yours is worse than no reminder.
 
+### Channel, fallback, and whether it arrived
+
+The channel comes from what we know about the handset: `has_smartphone` is asked
+at registration, and a candidate without one gets SMS. A meaningful share of this
+cohort is on low-storage phones where WhatsApp is not installed, and an offer
+sent somewhere they cannot receive it is the same as not telling them the work
+exists.
+
+A **permanent** WhatsApp failure — usually "not a WhatsApp number" — requeues the
+message on SMS rather than writing it off. Once: a message already on SMS has
+nowhere left to fall back to. A *retryable* failure does not trigger it; a
+network blip is not evidence the number is wrong.
+
+`POST /webhooks/delivery` takes a provider receipt. **"Sent" means the provider
+accepted it; "delivered" means it reached the handset**, and a shift reminder
+that never arrived looks identical to one that did without this.
+`GET /messages/undelivered` lists what was accepted and never confirmed.
+
 The default provider **records instead of sending**. A pilot can run its first
 week that way and read exactly what would have gone out before any of it reaches
 a real person. A live WhatsApp Business provider is deliberately not written: the
