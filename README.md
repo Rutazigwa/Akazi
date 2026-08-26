@@ -133,6 +133,15 @@ attempt is still carried, so the exclusion reads *"retail_greeting 2 did not
 reach the assessment's pass mark of 3"* rather than the candidate silently
 looking unassessed.
 
+The check is enforced twice, on purpose. The application version produces a
+message a coordinator can act on and a reason on the match screen. A **database
+trigger** is the backstop: both checks are reads followed by a write, so two
+coordinators offering the same person at once each pass before either commits.
+That race was demonstrated with two live connections — both offers succeeded and
+one worker was placed on two overlapping shifts. The trigger takes a
+per-candidate advisory lock, so concurrent offers serialise and the second sees
+the first.
+
 A placed worker is *not* removed from the pool — shift work is the point, and
 someone working Monday should be matchable for Tuesday.
 

@@ -137,7 +137,37 @@ def offer_placement(
         *_home_coords(session, candidate_id), context.site_lat, context.site_lng
     )
 
-    placement_id = session.execute(
+    # The overlap check above is a read; the insert below is the write. Between
+    # them another transaction can place the same person, so the database has
+    # the last word (migration 027). Inside a savepoint, so a refusal leaves the
+    # caller's transaction usable.
+    savepoint = session.begin_nested()
+    try:
+        placement_id = _insert_offer(
+            session, request_id, candidate_id, context, estimate, match.reason
+        )
+        savepoint.commit()
+    except Exception as exc:  # noqa: BLE001 -- re-raised as a domain error
+        savepoint.rollback()
+        if "already committed to overlapping work" in str(exc):
+            raise RequestError(
+                f"{match.candidate.display_name} was committed to overlapping "
+                f"work while this offer was being made"
+            ) from exc
+        raise
+
+    _refresh_request_status(session, request_id)
+
+    from app.messaging.events import on_placement_offered
+
+    on_placement_offered(session, placement_id)
+    return placement_id
+
+
+def _insert_offer(
+    session: Session, request_id, candidate_id, context, estimate, reason
+):
+    return session.execute(
         text(
             """
             INSERT INTO placements
@@ -155,18 +185,9 @@ def offer_placement(
             "unit": context.request.pay_unit,
             "transport": estimate.daily_rwf if estimate else 0,
             "commute": estimate.commute_min if estimate else None,
-            "reason": match.reason,
+            "reason": reason,
         },
     ).scalar_one()
-
-    _refresh_request_status(session, request_id)
-
-    # Inside the same transaction: a rolled-back offer takes its message with
-    # it, and the candidate is told the pay before they accept.
-    from app.messaging.events import on_placement_offered
-
-    on_placement_offered(session, placement_id)
-    return placement_id
 
 
 def respond_to_offer(

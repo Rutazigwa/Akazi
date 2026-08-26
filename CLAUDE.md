@@ -266,6 +266,11 @@ the truth.
   to a coordinator.
 - **Never hardcode a score denominator.** It was `/5` once, which would read
   "8/5" for an assessment scored out of ten. Carry `max_score` through.
+- **The overlap check exists twice and both are needed.** The Python check
+  gives a usable message; the trigger in migration 027 closes the race between
+  checking and inserting. Two coordinators offering the same person
+  concurrently both passed the application check before the trigger existed --
+  verified with live connections, not reasoned about.
 - **Do not exclude `placed` candidates from the pool.** Shift work is the
   point. Excluding them would also hide them from the rejection list, so a
   coordinator would not see why nobody matched.
