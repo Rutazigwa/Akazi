@@ -368,6 +368,8 @@ reasoned about:
 - placements    one worker on two overlapping shifts (migration 027)
 - cohorts       two people admitted to a room with one chair (028)
 - pay_records   RWF 30,000 recorded for a 15,000 week (028)
+- lockout       five simultaneous wrong passwords left the account unlocked;
+                fixed by incrementing in the UPDATE rather than in Python
 
 The fix in each case is a transaction-scoped `pg_advisory_xact_lock` on the
 row everything hangs off -- the candidate, the cohort, the placement -- taken
@@ -377,9 +379,18 @@ The lesson that cost the most: **the cohort capacity check was already a
 trigger and raced anyway.** Moving a check into the database does not make it
 concurrency-safe. Serialising the writers that could conflict does.
 
-When adding any new "is there already one of these?" rule, assume it races
-until a test with real threads says otherwise. `tests/test_concurrency.py`
-has the harness.
+A counter is the same bug wearing different clothes: `count = read + 1` is
+read-then-write. Increment in the UPDATE (`SET n = n + 1`), which takes a row
+lock and serialises for free.
+
+When adding any new "is there already one of these?" rule, or any counter,
+assume it races until a test with real threads says otherwise.
+`tests/test_concurrency.py` has the harness.
+
+Checked and genuinely safe, so nobody re-does the work: contracts
+(UNIQUE placement_id), replacement chains (partial unique index),
+once-only messages (ON CONFLICT plus partial unique index), and contract
+acknowledgement (UPDATE ... WHERE ... IS NULL).
 
 ### Attendance is only meaningful on live work
 

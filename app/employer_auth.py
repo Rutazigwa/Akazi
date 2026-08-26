@@ -124,30 +124,30 @@ def employer_login(
     try:
         _hasher.verify(row["password_hash"], password)
     except VerifyMismatchError:
-        attempts = row["failed_login_count"] + 1
-        if attempts >= MAX_FAILED_LOGINS:
-            session.execute(
-                text(
-                    """
-                    UPDATE employer_contacts
-                       SET failed_login_count = 0,
-                           locked_until = now() + CAST(:lockout AS interval)
-                     WHERE contact_id = :cid
-                    """
-                ),
-                {
-                    "cid": row["contact_id"],
-                    "lockout": f"{LOCKOUT_DURATION.seconds} seconds",
-                },
-            )
-        else:
-            session.execute(
-                text(
-                    "UPDATE employer_contacts SET failed_login_count = :n "
-                    "WHERE contact_id = :cid"
-                ),
-                {"n": attempts, "cid": row["contact_id"]},
-            )
+        # One atomic UPDATE, incrementing from the stored value. Incrementing
+        # from a value read earlier let concurrent attempts all write the same
+        # number back, so the lockout never triggered -- see the note in
+        # app/auth.py, where the same bug was found first.
+        session.execute(
+            text(
+                """
+                UPDATE employer_contacts
+                   SET failed_login_count =
+                           CASE WHEN failed_login_count + 1 >= :limit THEN 0
+                                ELSE failed_login_count + 1 END,
+                       locked_until =
+                           CASE WHEN failed_login_count + 1 >= :limit
+                                THEN now() + CAST(:lockout AS interval)
+                                ELSE locked_until END
+                 WHERE contact_id = :cid
+                """
+            ),
+            {
+                "cid": row["contact_id"],
+                "limit": MAX_FAILED_LOGINS,
+                "lockout": f"{LOCKOUT_DURATION.seconds} seconds",
+            },
+        )
         raise generic from None
 
     session.execute(

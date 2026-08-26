@@ -271,7 +271,11 @@ happens to expire. Deactivating a staff member invalidates their live sessions o
 the very next request. Only the SHA-256 of a token is stored, so a leaked backup
 yields no usable session.
 
-Five failed logins lock an account for 15 minutes. Every failure path — unknown
+Five failed logins lock an account for 15 minutes. The counter increments
+atomically in the database — incrementing from a value read a moment earlier
+defeated the lockout entirely, because concurrent attempts each read the same
+count and wrote the same number back. An attacker is exactly the caller who
+sends requests in parallel. Every failure path — unknown
 account, wrong password, locked, deactivated — returns the same 401 with the same
 body, so there is no way to enumerate staff.
 

@@ -193,26 +193,45 @@ def login(
 
 
 def _register_failure(session: Session, staff_id: UUID, current: int) -> None:
-    attempts = current + 1
-    if attempts >= MAX_FAILED_LOGINS:
-        session.execute(
-            text(
-                """
-                UPDATE staff
-                   SET failed_login_count = 0,
-                       locked_until = now() + CAST(:lockout AS interval)
-                 WHERE staff_id = :sid
-                """
-            ),
-            {"sid": str(staff_id), "lockout": f"{LOCKOUT_DURATION.seconds} seconds"},
-        )
-    else:
-        session.execute(
-            text(
-                "UPDATE staff SET failed_login_count = :n WHERE staff_id = :sid"
-            ),
-            {"n": attempts, "sid": str(staff_id)},
-        )
+    """Count one failure and lock if that was the last allowed.
+
+    A single atomic UPDATE, incrementing from the stored value rather than from
+    one read earlier. The read-then-write version defeated the lockout
+    completely: an attacker sending attempts concurrently had every one of them
+    read the same count and write the same number back, so the counter never
+    reached the limit. Verified -- five simultaneous wrong passwords left the
+    account unlocked.
+
+    That matters more here than anywhere else in the system. Lockout is what
+    stands between a weak or leaked coordinator password and a national ID
+    number, and an attacker is precisely the caller who would send requests in
+    parallel.
+
+    `current` is no longer used for the decision; it is kept only so callers
+    read naturally.
+    """
+    del current  # deliberately unused: the database does the arithmetic
+
+    session.execute(
+        text(
+            """
+            UPDATE staff
+               SET failed_login_count =
+                       CASE WHEN failed_login_count + 1 >= :limit THEN 0
+                            ELSE failed_login_count + 1 END,
+                   locked_until =
+                       CASE WHEN failed_login_count + 1 >= :limit
+                            THEN now() + CAST(:lockout AS interval)
+                            ELSE locked_until END
+             WHERE staff_id = :sid
+            """
+        ),
+        {
+            "sid": str(staff_id),
+            "limit": MAX_FAILED_LOGINS,
+            "lockout": f"{LOCKOUT_DURATION.seconds} seconds",
+        },
+    )
 
 
 def _issue_token(

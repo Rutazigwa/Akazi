@@ -391,3 +391,163 @@ def test_the_guard_holds_against_a_direct_insert(live_db):
     finally:
         engine.dispose()
     assert live_placements(live_db) == 1
+
+
+def test_concurrent_wrong_passwords_still_lock_the_account(live_db):
+    """The read-then-write version defeated the lockout completely.
+
+    Each attempt read the same failed_login_count and wrote the same number
+    back, so the counter never reached the limit -- verified: five simultaneous
+    wrong passwords left the account unlocked. An attacker is precisely the
+    caller who sends requests in parallel, and lockout is what stands between a
+    weak coordinator password and a national ID number.
+    """
+    from argon2 import PasswordHasher
+
+    from app.auth import MAX_FAILED_LOGINS, AuthError, login
+
+    engine = create_engine(live_db["url"], isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO staff (full_name, phone, role, password_hash) "
+                "VALUES ('Target','+250780009911','coordinator',:h)"
+            ),
+            {"h": PasswordHasher().hash("the-real-password")},
+        )
+    engine.dispose()
+
+    def wrong_password(session, _index, barrier):
+        barrier.wait(timeout=15)
+        try:
+            login(session, "+250780009911", "wrong")
+        except AuthError:
+            pass
+
+    _race(live_db["url"], live_db["staff"], wrong_password, count=MAX_FAILED_LOGINS)
+
+    engine = create_engine(live_db["url"])
+    try:
+        with engine.connect() as conn:
+            locked = conn.execute(
+                text(
+                    "SELECT locked_until > now() FROM staff "
+                    "WHERE phone = '+250780009911'"
+                )
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert locked is True
+
+
+def test_the_correct_password_is_refused_while_locked(live_db):
+    """A lockout that the right password walks through is not a lockout."""
+    from argon2 import PasswordHasher
+
+    from app.auth import MAX_FAILED_LOGINS, AuthError, login
+
+    engine = create_engine(live_db["url"], isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO staff (full_name, phone, role, password_hash) "
+                "VALUES ('Target2','+250780009912','coordinator',:h)"
+            ),
+            {"h": PasswordHasher().hash("the-real-password")},
+        )
+    engine.dispose()
+
+    def wrong_password(session, _index, barrier):
+        barrier.wait(timeout=15)
+        try:
+            login(session, "+250780009912", "wrong")
+        except AuthError:
+            pass
+
+    _race(live_db["url"], live_db["staff"], wrong_password, count=MAX_FAILED_LOGINS)
+
+    engine = create_engine(live_db["url"])
+    try:
+        with engine.connect() as conn:
+            session = Session(bind=conn)
+            with pytest.raises(AuthError):
+                login(session, "+250780009912", "the-real-password")
+    finally:
+        engine.dispose()
+
+
+def test_only_one_cover_is_sent_for_one_no_show(live_db):
+    """Two coordinators covering the same no-show would send two workers, and
+    the second arrives to find the shift already staffed."""
+    from app.operations.attendance import record_replacement
+
+    engine = create_engine(live_db["url"], isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        conn.execute(
+            text("SELECT set_config('app.staff_id', :s, false)"),
+            {"s": str(live_db["staff"])},
+        )
+        conn.execute(
+            text("UPDATE work_requests SET headcount = 3 WHERE request_id = :r"),
+            {"r": live_db["requests"][0]},
+        )
+        failed = conn.execute(
+            text(
+                "INSERT INTO placements (request_id, candidate_id, status, "
+                " agreed_pay_rwf, pay_unit) "
+                "VALUES (:r, :c, 'no_show', 5000, 'day') RETURNING placement_id"
+            ),
+            {"r": live_db["requests"][0], "c": live_db["candidate"]},
+        ).scalar_one()
+        conn.execute(
+            text(
+                "INSERT INTO attendance (placement_id, work_date, present, "
+                " confirmed_by, absence_reason) "
+                "VALUES (:p, CURRENT_DATE, false, 'employer', 'no-show')"
+            ),
+            {"p": failed},
+        )
+        covers = []
+        for n in (81, 82):
+            cid = conn.execute(
+                text(
+                    "INSERT INTO candidate_identity (legal_first_name, "
+                    " legal_last_name, date_of_birth, phone_primary) "
+                    "VALUES (:n,'X', CURRENT_DATE - INTERVAL '22 years', :p) "
+                    "RETURNING candidate_id"
+                ),
+                {"n": f"C{n}", "p": f"+2507800{n:05d}"},
+            ).scalar_one()
+            conn.execute(
+                text(
+                    "INSERT INTO candidates (candidate_id, display_name, "
+                    " gender, district, sector) "
+                    "VALUES (:c,:d,'F','Gasabo','Remera')"
+                ),
+                {"c": cid, "d": f"Cover{n}"},
+            )
+            covers.append(cid)
+    engine.dispose()
+
+    def cover(session, index, barrier):
+        session.execute(
+            text("SELECT 1 FROM placements WHERE replaces_placement = :p"),
+            {"p": failed},
+        )
+        barrier.wait(timeout=15)
+        record_replacement(session, failed, covers[index], "matched")
+
+    assert _race(live_db["url"], live_db["staff"], cover) == ["ok", "refused"]
+
+    engine = create_engine(live_db["url"])
+    try:
+        with engine.connect() as conn:
+            sent = conn.execute(
+                text(
+                    "SELECT count(*) FROM placements WHERE replaces_placement = :p"
+                ),
+                {"p": failed},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert sent == 1
