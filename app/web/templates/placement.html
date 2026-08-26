@@ -146,6 +146,27 @@
 </div>
 {% endif %}
 
+{% if contract %}
+<div class="card">
+  <h2 style="margin-top:0">Agreement {{ contract.contract_ref }}</h2>
+  <p class="small muted">
+    The terms as they stood when this was accepted. They are not recomputed —
+    if the shift or the rate changes afterwards, this still says what the
+    worker agreed to.
+  </p>
+  <pre style="white-space:pre-wrap;background:#f4f6f8;padding:.8rem;
+              border-radius:6px;font-size:.85rem;overflow-x:auto">{{ contract.text }}</pre>
+  <p class="small">
+    Worker:
+    {% if contract.worker_acknowledged_at %}<span class="pill good">confirmed</span>
+    {% else %}<span class="pill warn">not yet confirmed</span>{% endif %}
+    &nbsp; Employer:
+    {% if contract.employer_acknowledged_at %}<span class="pill good">confirmed</span>
+    {% else %}<span class="pill warn">not yet confirmed</span>{% endif %}
+  </p>
+</div>
+{% endif %}
+
 {% if p.status in ('active','completed') %}
 <div class="card">
   <h2 style="margin-top:0">Pay</h2>

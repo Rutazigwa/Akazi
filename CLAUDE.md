@@ -397,6 +397,19 @@ decision onto the worker, and prior behaviour feeds the ranking.
   assaulted. A live run once caught "keeps touching me" slipping past a literal
   phrase match -- add variants, never narrow them.
 
+### Contract terms are a snapshot and stay one
+
+`placement_contracts.terms` is written once at acceptance and never
+recomputed from the live rows. A request edited afterwards must not change
+what the contract says: the question in a dispute is what the worker was told
+when they said yes.
+
+Immutability is a trigger, not a rule. A conditional `ON UPDATE DO INSTEAD`
+rule disables `UPDATE ... RETURNING` on the whole table, which acknowledgement
+needs. The trigger raises rather than silently discarding -- unlike
+`consent_records`, where silence is right; here an attempt to alter an
+agreement should be loud.
+
 ### The women-only cohort rule
 
 Enforced by trigger, not only in `add_member`. It is a promise made to the

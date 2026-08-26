@@ -570,6 +570,39 @@ identically. The safeguard must not depend on how someone happened to tell us.
 On the coordinator dashboard, escalations sit **above** the guarantee. A covered
 shift is money; a harassment report is a person who may still be at the site.
 
+## Placement contracts
+
+Issued when a candidate accepts — the moment the terms are settled, and the
+moment the transparent-pay requirement is met. `placements.contract_ref` had
+existed since the first migration with nothing writing it.
+
+**The terms are a snapshot, not a view of the live rows.** A work request can be
+edited after acceptance — the shift moves, the rate changes — and a contract that
+quietly follows those edits records the current intention, not an agreement. In a
+dispute the question is what the worker was told when they said yes. The database
+refuses to let issued terms be rewritten, loudly: altering a contract after the
+fact is exactly what a party to a dispute would want to do.
+
+The worker gets their copy as a message, because a contract only the operator
+holds is not much of a protection:
+
+```
+AKAZI PLACEMENT AGREEMENT  AKZ-2026-00001
+
+Worker:   Aline U.
+Employer: Isuku Cooperative (Gasabo)
+Role:     Morning cleaner (08:00–16:00)
+Pay:      RWF 5,000 per day
+Transport: about RWF 1,150 per day, leaving about RWF 3,850.
+
+There is no fee to take this work.
+If you are not paid in full on the agreed date, tell Akazi and we will take it up.
+If you cannot get there or do not feel safe, tell us — we will not hold it against you.
+```
+
+Both sides acknowledge separately. An employer confirming terms the worker never
+saw is how informal work already goes wrong.
+
 ## Cohorts
 
 The last of the seven things the blueprint lists for weeks 1–6. Candidates are

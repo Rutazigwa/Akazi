@@ -97,6 +97,15 @@ TEMPLATES: dict[str, Template] = {
             "We will let you know about other work."
         ),
     ),
+    "placement_contract": Template(
+        key="placement_contract",
+        requires_consent=True,
+        text=(
+            "{contract}\n\n"
+            "Keep this message. Quote {contract_ref} if you need to talk to "
+            "us about this work."
+        ),
+    ),
     # To an employer contact, so no candidate consent applies.
     "employer_worker_assigned": Template(
         key="employer_worker_assigned",

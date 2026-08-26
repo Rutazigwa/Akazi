@@ -261,6 +261,22 @@ def reorder(
     )
 
 
+def acknowledge_contract(
+    session: Session, employer_id: UUID, contact_id: UUID, placement_id: UUID
+) -> None:
+    """The employer confirming they have seen the agreed terms.
+
+    Scoped like everything else here: the placement must be theirs.
+    """
+    from app.operations.contracts import ContractError, acknowledge
+
+    _own_placement(session, employer_id, placement_id)
+    try:
+        acknowledge(session, placement_id, "employer", contact_id)
+    except ContractError as exc:
+        raise EmployerPortalError(str(exc)) from exc
+
+
 def cancel_request(
     session: Session, employer_id: UUID, request_id: UUID, reason: str
 ) -> dict:

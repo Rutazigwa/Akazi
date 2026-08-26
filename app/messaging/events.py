@@ -182,6 +182,33 @@ def on_replacement_sent(
     )
 
 
+def on_contract_issued(
+    session: Session, placement_id: UUID, contract: dict
+) -> None:
+    """Send the worker their copy of what was agreed.
+
+    A contract only the operator holds is not much of a protection. Sent as a
+    message so it is on their phone rather than in our database.
+    """
+    from app.operations.contracts import render_contract
+
+    ctx = _placement_context(session, placement_id)
+    if ctx is None:
+        return
+
+    queue(
+        session,
+        template_key="placement_contract",
+        body=render(
+            "placement_contract",
+            contract=render_contract(contract["terms"], contract["contract_ref"]),
+            contract_ref=contract["contract_ref"],
+        ),
+        candidate_id=ctx["candidate_id"],
+        placement_id=placement_id,
+    )
+
+
 def on_placement_cancelled(
     session: Session, placement_id: UUID, reason: str
 ) -> None:

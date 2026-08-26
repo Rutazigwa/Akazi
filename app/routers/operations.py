@@ -15,6 +15,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app.deps import SessionDep, StaffDep
+from app.operations.contracts import (
+    ContractError,
+    acknowledge,
+    get_contract,
+    issue_contract,
+    render_contract,
+    unacknowledged,
+)
 from app.operations.attendance import (
     AttendanceError,
     complete_placement,
@@ -144,6 +152,50 @@ def terminate_the_placement(
     except AttendanceError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"placement_id": placement_id, "status": "terminated"}
+
+
+@router.get("/placements/{placement_id}/contract")
+def contract(placement_id: UUID, session: SessionDep, staff: StaffDep):
+    """The agreed terms, and the text a worker can be given."""
+    found = get_contract(session, placement_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="no contract for that placement")
+    return {
+        **found,
+        "text": render_contract(found["terms"], found["contract_ref"]),
+    }
+
+
+@router.post("/placements/{placement_id}/contract", status_code=201)
+def create_contract(
+    placement_id: UUID, session: SessionDep, staff: StaffDep,
+    supervisor_name: str | None = None,
+):
+    """Issue one by hand, for a placement accepted before contracts existed."""
+    try:
+        return issue_contract(
+            session, placement_id, staff.staff_id, supervisor_name
+        )
+    except ContractError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/placements/{placement_id}/contract/acknowledge")
+def acknowledge_contract(
+    placement_id: UUID, session: SessionDep, staff: StaffDep,
+    party: str = "worker",
+):
+    try:
+        acknowledge(session, placement_id, party)
+    except ContractError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"placement_id": placement_id, "acknowledged_by": party}
+
+
+@router.get("/contracts/unacknowledged")
+def pending_contracts(session: SessionDep, staff: StaffDep):
+    """Contracts one side has not confirmed seeing."""
+    return {"unacknowledged": unacknowledged(session)}
 
 
 @router.get("/guarantees/open")

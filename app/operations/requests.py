@@ -200,6 +200,20 @@ def respond_to_offer(
     ).scalar_one()
     refresh_candidate_status(session, candidate_id)
 
+    if accepted:
+        # Issued here because acceptance is the moment the terms are settled,
+        # and the moment the transparent-pay requirement was met: they saw the
+        # pay net of transport before saying yes.
+        from app.messaging.events import on_contract_issued
+        from app.operations.contracts import ContractError, issue_contract
+
+        try:
+            contract = issue_contract(session, placement_id)
+        except ContractError:
+            contract = None
+        if contract:
+            on_contract_issued(session, placement_id, contract)
+
     if not accepted:
         from app.messaging.events import on_placement_ended
 

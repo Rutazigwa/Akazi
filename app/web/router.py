@@ -37,6 +37,7 @@ from app.operations.attendance import (
     terminate_placement,
 )
 from app.employer_auth import invite_contact
+from app.operations.contracts import get_contract, render_contract
 from app.operations.escalations import (
     EscalationError,
     acknowledge,
@@ -920,6 +921,10 @@ def placement_page(
     return _render(
         request, "placement.html", staff,
         p=dict(row),
+        contract=(
+            lambda c: {**c, "text": render_contract(c["terms"], c["contract_ref"])}
+            if c else None
+        )(get_contract(session, placement_id)),
         pay_records=pay_records_for_placement(session, placement_id),
         pay_suggestion=suggest_pay_period(session, placement_id),
         attendance=[dict(a) for a in attendance],
