@@ -23,6 +23,10 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
+# Throwaway: the role exists only inside a scratch database that is dropped
+# at the end of the module.
+APP_ROLE_TEST_PASSWORD = "test-only"
+
 MIGRATIONS = sorted((Path(__file__).parent.parent / "migrations").glob("*.sql"))
 
 
@@ -370,17 +374,20 @@ def restricted_url(scratch_database_module) -> str:
 
     role = subprocess.run(
         ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-q",
-         "-c", "SELECT set_config('akazi.app_password', 'test-only', false);",
+         "-c", "SELECT set_config('akazi.app_password', "
+               f"'{APP_ROLE_TEST_PASSWORD}', false);",
          "-f", str(root / "scripts" / "create_app_role.sql")],
         capture_output=True, text=True,
     )
     assert role.returncode == 0, role.stderr
 
-    # Swap the connecting user for the restricted login role. Local socket
-    # connections authenticate by trust here, so no password is carried.
+    # Swap the connecting user for the restricted login role, carrying the
+    # password create_app_role.sql just set. A local socket authenticating by
+    # trust ignores it; CI connects over TCP and does not, and dropping it
+    # here made the fixture pass locally and fail there.
     scheme, _, rest = scratch_database_module.partition("://")
-    _, _, hostpart = rest.rpartition("@") if "@" in rest else ("", "", rest)
-    return f"{scheme}://akazi_app@{hostpart}"
+    hostpart = rest.rpartition("@")[2] if "@" in rest else rest
+    return f"{scheme}://akazi_app:{APP_ROLE_TEST_PASSWORD}@{hostpart}"
 
 
 @pytest.fixture(scope="module")
