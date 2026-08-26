@@ -107,7 +107,16 @@ class Candidate:
     date_of_birth: date | None = None
     age_eligible: bool | None = None
     availability: Sequence[AvailabilityWindow] = ()
+    # Only scores that met the assessment's own pass mark. A failed attempt
+    # is not a low score, it is no evidence of the skill.
     skill_scores: dict[str, int] = field(default_factory=dict)
+    # skill_code -> the assessment's maximum, so a reason can say "4/5"
+    # honestly. It was hardcoded as /5 once, which would have read "8/5" for
+    # an assessment scored out of ten.
+    skill_max: dict[str, int] = field(default_factory=dict)
+    # skill_code -> (best score, the pass mark it fell short of). Carried so
+    # an exclusion can be explained rather than reading as "never assessed".
+    failed_skills: dict[str, tuple[int, int]] = field(default_factory=dict)
     max_commute_rwf: int | None = None
     max_commute_min: int | None = None
     accepts_after_dark: bool = False
@@ -202,9 +211,17 @@ def _hard_exclusions(c: Candidate, r: WorkRequest) -> str | None:
     for skill, min_score in r.required_skills.items():
         score = c.skill_scores.get(skill)
         if score is None:
+            if skill in c.failed_skills:
+                scored, pass_mark = c.failed_skills[skill]
+                return (
+                    f"{skill} {scored} did not reach the assessment's pass "
+                    f"mark of {pass_mark}"
+                )
             return f"no assessment on record for required skill '{skill}'"
         if score < min_score:
-            return f"{skill} {score}/5 is below the required {min_score}"
+            out_of = c.skill_max.get(skill)
+            shown = f"{score}/{out_of}" if out_of else str(score)
+            return f"{skill} {shown} is below the required {min_score}"
     return None
 
 
@@ -276,7 +293,12 @@ def _reason(c: Candidate, r: WorkRequest) -> str:
     if c.retention_30day_rate:
         parts.append(f"{c.retention_30day_rate:.0%} 30-day retention")
     for skill, min_score in sorted(r.required_skills.items()):
-        parts.append(f"{skill} {c.skill_scores[skill]}/5 (needs {min_score})")
+        out_of = c.skill_max.get(skill)
+        scored = (
+            f"{c.skill_scores[skill]}/{out_of}" if out_of
+            else str(c.skill_scores[skill])
+        )
+        parts.append(f"{skill} {scored} (needs {min_score})")
     if r.shift_start and r.shift_end:
         parts.append("availability")
     if c.est_commute_min is not None:

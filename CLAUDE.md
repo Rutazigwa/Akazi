@@ -259,6 +259,13 @@ the truth.
   result that an actively-placed worker could be sent to two employers for the
   same hours. `refresh_candidate_status` keeps the summary honest for display
   and reporting; it is not the control.
+- **A failed assessment is not a low score.** Below the assessment's
+  `pass_score`, a candidate has no evidence of that skill and cannot clear a
+  lower employer bar. Keep the failed attempt visible so the exclusion can be
+  explained -- "never assessed" and "assessed and failed" are different things
+  to a coordinator.
+- **Never hardcode a score denominator.** It was `/5` once, which would read
+  "8/5" for an assessment scored out of ten. Carry `max_score` through.
 - **Do not exclude `placed` candidates from the pool.** Shift work is the
   point. Excluding them would also hide them from the rejection list, so a
   coordinator would not see why nobody matched.

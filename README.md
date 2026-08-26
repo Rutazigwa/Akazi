@@ -120,6 +120,19 @@ summary that drifts and this one had drifted: `candidates.status` never became
 sent to two employers for the same hours. Date ranges and shift windows are both
 compared; back-to-back shifts are a long day, not a clash.
 
+### Assessment scores mean what they say
+
+A score cannot exceed its assessment's maximum — enforced by trigger, because
+the maximum lives on another table where a `CHECK` cannot see it, and because
+the application will not be the only thing that ever writes here (a bulk import
+of paper assessment sheets is exactly where this goes wrong).
+
+A result below the assessment's own **pass mark** is not a low score, it is no
+evidence of the skill — so it does not clear a lower employer bar. The failed
+attempt is still carried, so the exclusion reads *"retail_greeting 2 did not
+reach the assessment's pass mark of 3"* rather than the candidate silently
+looking unassessed.
+
 A placed worker is *not* removed from the pool — shift work is the point, and
 someone working Monday should be matchable for Tuesday.
 

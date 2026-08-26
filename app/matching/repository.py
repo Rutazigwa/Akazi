@@ -104,7 +104,8 @@ SELECT c.candidate_id,
        COALESCE(prior.completed_with_employer, 0) AS completed_with_employer,
        COALESCE(retention.rate, 0.0)              AS retention_30day_rate,
        COALESCE(scores.best_score, 0)             AS assessment_score,
-       COALESCE(skills.scores, '{}'::jsonb)       AS skill_scores,
+       COALESCE(skills.passing, '{}'::jsonb)      AS skill_scores,
+       COALESCE(skills.failed, '{}'::jsonb)       AS failed_skills,
        COALESCE(windows.slots, '[]'::jsonb)       AS availability,
        COALESCE(conflict.committed, false)        AS has_conflicting_commitment
   FROM candidates c
@@ -140,14 +141,27 @@ SELECT c.candidate_id,
        WHERE ar.candidate_id = c.candidate_id
   ) scores ON true
   LEFT JOIN LATERAL (
-      -- Best score per skill: a retake supersedes an earlier attempt.
-      SELECT jsonb_object_agg(sk.skill_code, sk.best) AS scores
-        FROM (SELECT s.skill_code, max(ar.score) AS best
+      -- Best attempt per skill; a retake supersedes an earlier one.
+      --
+      -- Split by the assessment's own pass mark. A result below it means the
+      -- candidate did not demonstrate the skill, so it is not a low score that
+      -- might clear a low employer bar -- it is no evidence at all. The failed
+      -- attempts are kept separately so the coordinator can be told why,
+      -- rather than the candidate silently reading as unassessed.
+      SELECT jsonb_object_agg(sk.skill_code,
+                              jsonb_build_array(sk.best, sk.out_of))
+                 FILTER (WHERE sk.best >= sk.pass)  AS passing,
+             jsonb_object_agg(sk.skill_code,
+                              jsonb_build_array(sk.best, sk.pass))
+                 FILTER (WHERE sk.best < sk.pass)   AS failed
+        FROM (SELECT DISTINCT ON (s.skill_code)
+                     s.skill_code, ar.score AS best, a.pass_score AS pass,
+                     a.max_score AS out_of
                 FROM assessment_results ar
                 JOIN assessments a ON a.assessment_id = ar.assessment_id
                 JOIN skills s      ON s.skill_id = a.skill_id
                WHERE ar.candidate_id = c.candidate_id
-               GROUP BY s.skill_code) sk
+               ORDER BY s.skill_code, ar.score DESC, ar.assessed_at DESC) sk
   ) skills ON true
   LEFT JOIN LATERAL (
       SELECT jsonb_agg(jsonb_build_array(av.day_of_week,
@@ -235,7 +249,18 @@ def load_candidates(
                     AvailabilityWindow(dow, _parse_time(start), _parse_time(end))
                     for dow, start, end in row["availability"]
                 ],
-                skill_scores=dict(row["skill_scores"]),
+                skill_scores={
+                    code: int(pair[0])
+                    for code, pair in dict(row["skill_scores"]).items()
+                },
+                skill_max={
+                    code: int(pair[1])
+                    for code, pair in dict(row["skill_scores"]).items()
+                },
+                failed_skills={
+                    code: (int(pair[0]), int(pair[1]))
+                    for code, pair in dict(row["failed_skills"]).items()
+                },
                 max_commute_rwf=row["max_commute_rwf"],
                 max_commute_min=row["max_commute_min"],
                 accepts_after_dark=row["accepts_after_dark"],

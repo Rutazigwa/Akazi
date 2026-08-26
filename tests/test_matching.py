@@ -39,6 +39,7 @@ def make_candidate(**overrides) -> Candidate:
         date_of_birth=date(2002, 1, 1),
         availability=[AvailabilityWindow(0, time(6, 0), time(20, 0))],
         skill_scores={},
+        skill_max={},
         max_commute_rwf=2000,
         max_commute_min=90,
         has_placement_consent=True,
@@ -90,7 +91,9 @@ def test_availability_on_the_wrong_day_is_excluded():
 
 def test_skill_below_min_score_is_excluded():
     request = make_request(required_skills={"retail_greeting": 4})
-    weak = make_candidate(skill_scores={"retail_greeting": 2})
+    weak = make_candidate(
+        skill_scores={"retail_greeting": 2}, skill_max={"retail_greeting": 5}
+    )
     rejection = only_rejection(match_candidates(request, [weak]))
     assert "below the required 4" in rejection.reason
 
@@ -225,6 +228,7 @@ def test_every_match_carries_a_defensible_reason():
     request = make_request(pay_rwf=5000, required_skills={"retail_greeting": 3})
     candidate = make_candidate(
         skill_scores={"retail_greeting": 4},
+        skill_max={"retail_greeting": 5},
         est_commute_min=12,
         est_transport_rwf=500,
     )
