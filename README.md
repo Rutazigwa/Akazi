@@ -504,6 +504,11 @@ publishes and the LMIS has no other source for.
 
 ## Pay
 
+Two coordinators recording the same week both passed the overlap check before
+either wrote — RWF 30,000 for a 15,000 week. A database trigger with a
+per-placement advisory lock now serialises them. Pay periods may not share even
+a single day: a period ending on the day the next begins counts that day twice.
+
 No money moves through Akazi — that is a pilot constraint, and `app/operations/pay.py`
 honours it by being a ledger of claims. A pay period is opened when the terms are
 known (pre-filled from confirmed attendance × the agreed rate), the employer's

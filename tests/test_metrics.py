@@ -134,8 +134,11 @@ def test_pay_accuracy_requires_both_in_full_and_on_time(
             ),
             {
                 "pid": pid,
+                # Non-touching windows: a period ending on the same day the
+                # next begins would count that day's pay twice, which the
+                # database now refuses.
                 "start": TODAY - timedelta(days=7 * (i + 1)),
-                "end": TODAY - timedelta(days=7 * i),
+                "end": TODAY - timedelta(days=7 * i + 1),
                 "due": due,
                 "paid": paid,
                 "confirmed": confirmed,

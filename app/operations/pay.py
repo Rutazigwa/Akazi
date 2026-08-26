@@ -79,21 +79,37 @@ def record_pay_period(
             "this placement already has a pay record overlapping that period"
         )
 
-    return session.execute(
-        text(
-            """
-            INSERT INTO pay_records (placement_id, period_start, period_end,
-                                     gross_rwf, deductions_rwf, due_on, method)
-            VALUES (:pid, :start, :end, :gross, :deductions, :due, :method)
-            RETURNING pay_id
-            """
-        ),
-        {
-            "pid": str(placement_id), "start": period_start, "end": period_end,
-            "gross": gross_rwf, "deductions": deductions_rwf, "due": due_on,
-            "method": method,
-        },
-    ).scalar_one()
+    # The overlap check above is a read and this is the write; two coordinators
+    # recording the same week both passed it before migration 028 added the
+    # database guard. A savepoint so a refusal leaves the caller usable.
+    savepoint = session.begin_nested()
+    try:
+        pay_id = session.execute(
+            text(
+                """
+                INSERT INTO pay_records (placement_id, period_start, period_end,
+                                         gross_rwf, deductions_rwf, due_on,
+                                         method)
+                VALUES (:pid, :start, :end, :gross, :deductions, :due, :method)
+                RETURNING pay_id
+                """
+            ),
+            {
+                "pid": str(placement_id), "start": period_start,
+                "end": period_end, "gross": gross_rwf,
+                "deductions": deductions_rwf, "due": due_on, "method": method,
+            },
+        ).scalar_one()
+        savepoint.commit()
+    except Exception as exc:  # noqa: BLE001 -- re-raised as a domain error
+        savepoint.rollback()
+        if "already covers part of this period" in str(exc):
+            raise PayError(
+                "another pay record was created for an overlapping period "
+                "while this one was being entered"
+            ) from exc
+        raise
+    return pay_id
 
 
 def suggest_pay_period(session: Session, placement_id: UUID) -> dict | None:

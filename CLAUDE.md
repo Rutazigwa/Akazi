@@ -359,6 +359,28 @@ metric's entire reason to exist. Open a pay period when terms are known, not
 when money lands: a record created only at payment can never show the payment
 that failed to happen.
 
+### Read-then-write is a race until it is serialised
+
+Three checks in this system had the shape "count or look, then insert", and
+all three raced under two concurrent connections -- each demonstrated, not
+reasoned about:
+
+- placements    one worker on two overlapping shifts (migration 027)
+- cohorts       two people admitted to a room with one chair (028)
+- pay_records   RWF 30,000 recorded for a 15,000 week (028)
+
+The fix in each case is a transaction-scoped `pg_advisory_xact_lock` on the
+row everything hangs off -- the candidate, the cohort, the placement -- taken
+*before* the check.
+
+The lesson that cost the most: **the cohort capacity check was already a
+trigger and raced anyway.** Moving a check into the database does not make it
+concurrency-safe. Serialising the writers that could conflict does.
+
+When adding any new "is there already one of these?" rule, assume it races
+until a test with real threads says otherwise. `tests/test_concurrency.py`
+has the harness.
+
 ### Attendance is only meaningful on live work
 
 `log_attendance` refuses anything but an accepted, active or no-show

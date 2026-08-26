@@ -215,6 +215,156 @@ def test_the_survivor_is_a_complete_placement(live_db):
     assert row["agreed_pay_rwf"] == 5000
 
 
+def _race(url, staff, work, count=2):
+    """Run `work(session, i)` in `count` threads, all past a barrier together."""
+    barrier = threading.Barrier(count)
+    results: list[str] = []
+    lock = threading.Lock()
+
+    def run(index):
+        engine = create_engine(url)
+        try:
+            with engine.connect() as conn:
+                tx = conn.begin()
+                conn.execute(
+                    text("SELECT set_config('app.staff_id', :s, true)"),
+                    {"s": str(staff)},
+                )
+                session = Session(
+                    bind=conn, join_transaction_mode="create_savepoint"
+                )
+                try:
+                    work(session, index, barrier)
+                    tx.commit()
+                    outcome = "ok"
+                except Exception:  # noqa: BLE001
+                    tx.rollback()
+                    outcome = "refused"
+            with lock:
+                results.append(outcome)
+        finally:
+            engine.dispose()
+
+    threads = [threading.Thread(target=run, args=(i,)) for i in range(count)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    return sorted(results)
+
+
+def test_a_cohort_with_one_place_admits_one_person(live_db):
+    """Two people admitted to a room with one chair.
+
+    Worth noting: the capacity check was already a trigger and raced anyway.
+    Moving a check into the database does not make it concurrency-safe.
+    """
+    from app.operations.cohorts import add_member
+
+    engine = create_engine(live_db["url"], isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        cohort = conn.execute(
+            text(
+                "INSERT INTO cohorts (name, starts_on, facilitator, capacity) "
+                "VALUES ('Orientation', CURRENT_DATE, :s, 1) RETURNING cohort_id"
+            ),
+            {"s": live_db["staff"]},
+        ).scalar_one()
+        others = []
+        for n in (91, 92):
+            cid = conn.execute(
+                text(
+                    "INSERT INTO candidate_identity (legal_first_name, "
+                    " legal_last_name, date_of_birth, phone_primary) "
+                    "VALUES (:n,'X', CURRENT_DATE - INTERVAL '22 years', :p) "
+                    "RETURNING candidate_id"
+                ),
+                {"n": f"P{n}", "p": f"+2507800{n:05d}"},
+            ).scalar_one()
+            conn.execute(
+                text(
+                    "INSERT INTO candidates (candidate_id, display_name, "
+                    " gender, district, sector) "
+                    "VALUES (:c,:d,'F','Gasabo','Remera')"
+                ),
+                {"c": cid, "d": f"P{n}"},
+            )
+            others.append(cid)
+    engine.dispose()
+
+    def enrol(session, index, barrier):
+        session.execute(
+            text("SELECT count(*) FROM cohort_members WHERE cohort_id = :c"),
+            {"c": cohort},
+        )
+        barrier.wait(timeout=15)
+        add_member(session, cohort, others[index])
+
+    assert _race(live_db["url"], live_db["staff"], enrol) == ["ok", "refused"]
+
+    engine = create_engine(live_db["url"])
+    try:
+        with engine.connect() as conn:
+            taken = conn.execute(
+                text(
+                    "SELECT count(*) FROM cohort_members WHERE cohort_id = :c"
+                ),
+                {"c": cohort},
+            ).scalar_one()
+    finally:
+        engine.dispose()
+    assert taken == 1
+
+
+def test_one_week_of_work_is_recorded_once(live_db):
+    """Two coordinators entering the same week both found no overlap before
+    either wrote: RWF 30,000 for a 15,000 week, which tells an employer they
+    owe double or tells us a worker was paid twice."""
+    from datetime import date, timedelta
+
+    from app.operations.pay import record_pay_period
+
+    today = date.today()
+    engine = create_engine(live_db["url"], isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        placement = conn.execute(
+            text(
+                "INSERT INTO placements (request_id, candidate_id, status, "
+                " agreed_pay_rwf, pay_unit) "
+                "VALUES (:r, :c, 'active', 5000, 'day') RETURNING placement_id"
+            ),
+            {"r": live_db["requests"][0], "c": live_db["candidate"]},
+        ).scalar_one()
+    engine.dispose()
+
+    def record(session, index, barrier):
+        session.execute(
+            text("SELECT 1 FROM pay_records WHERE placement_id = :p"),
+            {"p": placement},
+        )
+        barrier.wait(timeout=15)
+        record_pay_period(
+            session, placement, today - timedelta(days=7), today, 15_000, today
+        )
+
+    assert _race(live_db["url"], live_db["staff"], record) == ["ok", "refused"]
+
+    engine = create_engine(live_db["url"])
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT count(*), COALESCE(sum(net_rwf), 0) "
+                    "FROM pay_records WHERE placement_id = :p"
+                ),
+                {"p": placement},
+            ).first()
+    finally:
+        engine.dispose()
+    assert row[0] == 1
+    assert row[1] == 15_000
+
+
 def test_the_guard_holds_against_a_direct_insert(live_db):
     """It is a trigger, so it does not depend on going through the
     application."""
