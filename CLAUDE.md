@@ -397,6 +397,17 @@ decision onto the worker, and prior behaviour feeds the ranking.
   assaulted. A live run once caught "keeps touching me" slipping past a literal
   phrase match -- add variants, never narrow them.
 
+### The women-only cohort rule
+
+Enforced by trigger, not only in `add_member`. It is a promise made to the
+people who agreed to attend, and a rule that lives in one code path is a rule
+that a second code path will not have. An unrecorded gender is refused: "we
+did not ask" does not satisfy a specific promise.
+
+The rejection runs inside a savepoint, so a refusal does not abort the caller's
+transaction -- a coordinator enrolling a list would otherwise lose everyone
+after the first person turned away.
+
 ### Enum values that are deliberately never written
 
 Three remain, and each is a decision rather than an oversight. Do not "wire
@@ -407,9 +418,8 @@ them up" without revisiting the reasoning:
 - `message_status.sending` -- dispatch claims a row with `FOR UPDATE SKIP
   LOCKED` and resolves it in the same transaction, so there is no window for
   a transient state. PostgreSQL cannot drop an enum value, so it stays.
-- `candidate_status.trained` -- there is no training workflow yet. The
-  blueprint's cohort management is genuinely unbuilt, and this value is
-  waiting for it rather than being unused by mistake.
+(`candidate_status.trained` was on this list until cohorts were built; it is
+now set by finishing one.)
 
 Re-run the audit after schema changes: list every enum value and check
 whether app code ever writes it. It has found real bugs twice -- the

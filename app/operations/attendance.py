@@ -69,6 +69,13 @@ def refresh_candidate_status(session: Session, candidate_id: UUID) -> str | None
                                      WHERE p.candidate_id = c.candidate_id
                                        AND p.status IN ('accepted','active'))
                            THEN 'placed'::candidate_status
+                       -- Finishing a cohort outranks having been assessed:
+                       -- it is the further step, and it is what 'trained' has
+                       -- been reserved for since the first migration.
+                       WHEN EXISTS (SELECT 1 FROM cohort_members cm
+                                     WHERE cm.candidate_id = c.candidate_id
+                                       AND cm.outcome = 'completed')
+                           THEN 'trained'::candidate_status
                        WHEN EXISTS (SELECT 1 FROM assessment_results ar
                                      WHERE ar.candidate_id = c.candidate_id)
                            THEN 'assessed'::candidate_status

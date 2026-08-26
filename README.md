@@ -34,8 +34,8 @@ app/config.py   Settings + the residency guard
 app/db.py       Engine, session scope, audit attribution
 app/matching/   The v1 matching engine, transport estimation, DB loading
 app/messaging/  Outbox, templates, providers, dispatcher
-app/operations/ Registration, work requests, offers, attendance, guarantee,
-                pay, data subject rights, escalations, LMIS reporting
+app/operations/ Registration, cohorts, work requests, offers, attendance,
+                guarantee, pay, data subject rights, escalations, LMIS
 app/auth.py     Passwords, sessions, lockout
 app/mfa.py      TOTP enrolment, session elevation, replay guard
 app/deps.py     Session + authenticated-staff dependencies
@@ -569,6 +569,36 @@ identically. The safeguard must not depend on how someone happened to tell us.
 
 On the coordinator dashboard, escalations sit **above** the guarantee. A covered
 shift is money; a harassment report is a person who may still be at the site.
+
+## Cohorts
+
+The last of the seven things the blueprint lists for weeks 1–6. Candidates are
+prepared in groups before placement: a short orientation for a sector, run by a
+named facilitator — a person, recorded at the time, because "who ran this
+cohort" needs an answer months later and rotas change.
+
+Finishing a cohort is what `candidate_status.trained` has been reserved for
+since the first migration. Withdrawing partway does not count: recording
+otherwise would flatter both the cohort numbers and the candidate's readiness.
+
+### All-female cohorts
+
+`women_only` is not a convenience filter. The blueprint asks for all-female
+cohort options as a concrete measure for women's participation — alongside
+shift-time limits and employer safety ratings — because female unemployment runs
+15.5% against 11.6% male, and tracking the gap is not a plan. **A woman who will
+not attend a mixed session is not served by a system that offers her one
+anyway.**
+
+Enforced by a database trigger as well as in code: it is a promise made to the
+people in the room, and it should not depend on every future code path
+remembering it. An unrecorded gender does not pass — "we did not ask" does not
+satisfy a specific promise.
+
+`GET /cohorts/training-effect` compares placement rates for people who finished
+a cohort against those who never sat one. Reported as an association, not a
+causal claim: people who finish training are also the people who showed up, and
+that is not something this number can separate.
 
 ## Cancelling a shift
 
