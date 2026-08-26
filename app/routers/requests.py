@@ -13,6 +13,7 @@ from app.deps import SessionDep, StaffDep
 from app.matching.repository import find_matches
 from app.operations.requests import (
     RequestError,
+    cancel_work_request,
     create_work_request,
     offer_placement,
     open_requests,
@@ -44,6 +45,10 @@ class NewWorkRequest(BaseModel):
 class RequiredSkill(BaseModel):
     skill_code: str
     min_score: int = Field(default=3, ge=0)
+
+
+class Cancellation(BaseModel):
+    reason: str = Field(min_length=1)
 
 
 class Offer(BaseModel):
@@ -104,6 +109,17 @@ def add_skill(
     except RequestError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"request_id": request_id, "skill_code": body.skill_code}
+
+
+@router.post("/work-requests/{request_id}/cancel")
+def cancel(
+    request_id: UUID, body: Cancellation, session: SessionDep, staff: StaffDep
+):
+    """Withdraw a shift. Refused once anyone has started work."""
+    try:
+        return cancel_work_request(session, request_id, body.reason)
+    except RequestError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/work-requests/{request_id}/matches")

@@ -87,6 +87,16 @@ TEMPLATES: dict[str, Template] = {
             "Reply YES or NO."
         ),
     ),
+    "placement_cancelled": Template(
+        key="placement_cancelled",
+        requires_consent=True,
+        text=(
+            "Akazi: the {title} shift at {business_name} on {starts_on} has "
+            "been cancelled by the employer. This is not your doing and it "
+            "does not affect your record.\n"
+            "We will let you know about other work."
+        ),
+    ),
     # To an employer contact, so no candidate consent applies.
     "employer_worker_assigned": Template(
         key="employer_worker_assigned",

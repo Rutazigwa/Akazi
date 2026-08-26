@@ -68,6 +68,20 @@
   {% else %}<p class="muted small">Nobody excluded.</p>{% endif %}
 </div>
 
+<div class="card">
+  <h2 style="margin-top:0">Cancel this shift</h2>
+  <p class="small muted">
+    Anyone offered or accepted is told it is off, and freed for other work.
+    Refused once someone has started — end those placements individually
+    instead, with a reason.
+  </p>
+  <form method="post" action="/ui/requests/{{ request_row.request_id }}/cancel">
+    <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+    <input name="reason" placeholder="Why is it cancelled?" required style="max-width:340px">
+    <button class="danger">Cancel</button>
+  </form>
+</div>
+
 {% if placements %}
 <div class="card">
   <h2 style="margin-top:0">Already offered</h2>

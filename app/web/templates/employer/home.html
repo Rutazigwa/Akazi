@@ -79,6 +79,13 @@
           <input type="date" name="starts_on" value="{{ today }}" style="width:auto">
           <button class="secondary">Order again</button>
         </form>
+        {% if r.status in ('open', 'filling', 'filled') %}
+        <form class="inline" method="post" action="/employer/requests/{{ r.request_id }}/cancel">
+          <input type="hidden" name="csrf_token" value="{{ employer.csrf_token }}">
+          <input name="reason" placeholder="Why?" style="width:auto" required>
+          <button class="secondary" style="border-color:#8f1d1d;color:#8f1d1d">Cancel shift</button>
+        </form>
+        {% endif %}
       </td>
     </tr>
     {% endfor %}

@@ -354,6 +354,24 @@ metric's entire reason to exist. Open a pay period when terms are known, not
 when money lands: a record created only at payment can never show the payment
 that failed to happen.
 
+### Attendance is only meaningful on live work
+
+`log_attendance` refuses anything but an accepted, active or no-show
+placement. Without that guard a stray log against a cancelled placement
+flipped it to `no_show`, inventing a guarantee invocation for a shift that
+was not happening -- inflating our own failure rate and sending a cover to
+an employer who had cancelled.
+
+Logging attendance as present against a `no_show` restores it to active. A
+no-show recorded in error would otherwise stand permanently, against us in
+the metrics and against the worker on their record.
+
+### Cancellation belongs to whoever decided it
+
+An employer withdrawing a shift produces `cancelled` placements, never
+`declined`. Never reuse `declined` for this: it writes the employer's
+decision onto the worker, and prior behaviour feeds the ranking.
+
 ### Escalations -- the safeguard, not a reporting line
 
 - **An escalation has a named owner and a deadline, both recorded at the time.**

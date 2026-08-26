@@ -29,6 +29,7 @@ from app.employer_auth import (
 from app.operations.attendance import AttendanceError
 from app.operations.employer_portal import (
     EmployerPortalError,
+    cancel_request,
     assigned_workers,
     confirm_attendance,
     my_requests,
@@ -266,6 +267,25 @@ def rate(
     except EmployerPortalError as exc:
         return _back(f"/employer/workers/{placement_id}", str(exc), "err")
     return _back(f"/employer/workers/{placement_id}", "Rating saved")
+
+
+@router.post("/requests/{request_id}/cancel")
+def do_cancel(
+    request_id: UUID,
+    session: SessionDep,
+    employer: EmployerCsrfDep,
+    reason: Annotated[str, Form()],
+):
+    try:
+        result = cancel_request(
+            session, employer.employer_id, request_id, reason
+        )
+    except EmployerPortalError as exc:
+        return _back("/employer/", str(exc), "err")
+    return _back(
+        "/employer/",
+        f"Cancelled — {result['placements_cancelled']} worker(s) told it is off",
+    )
 
 
 @router.post("/requests/{request_id}/reorder")

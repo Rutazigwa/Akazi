@@ -552,6 +552,26 @@ identically. The safeguard must not depend on how someone happened to tell us.
 On the coordinator dashboard, escalations sit **above** the guarantee. A covered
 shift is money; a harassment report is a person who may still be at the site.
 
+## Cancelling a shift
+
+An employer can withdraw a shift from their own dashboard, and a coordinator
+from the match screen. Anyone offered or accepted is told it is off — and told
+explicitly that it was not their doing, because someone who accepts work and
+then hears nothing assumes they were dropped, and the next offer is harder to
+fill.
+
+**Cancelled is a placement status of its own**, not `declined`. Declined means
+the *candidate* turned it down; recording the employer's decision that way puts
+a refusal on the worker's record they never made, and prior behaviour feeds the
+ranking.
+
+Cancellation is **refused once anyone has started** — work that has begun cannot
+be un-happened, and the honest record of it ending is a termination with a
+reason, one placement at a time.
+
+Cancelled shifts are excluded from the guarantee metrics: a shift the employer
+withdrew is not one we failed to cover.
+
 ## The guarantee
 
 A no-show is recorded like any other absence, but `log_attendance` returns a

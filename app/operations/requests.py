@@ -251,6 +251,86 @@ def _refresh_request_status(session: Session, request_id: UUID) -> None:
     )
 
 
+def cancel_work_request(
+    session: Session, request_id: UUID, reason: str, employer_id: UUID | None = None
+) -> dict:
+    """Withdraw a shift that is no longer happening.
+
+    Refused once anybody has actually started: work that has begun cannot be
+    un-happened, and the honest record of it ending early is a termination with
+    a reason, one placement at a time.
+
+    Placements that had not started become 'cancelled' rather than 'declined'.
+    Declined means the candidate turned it down, and putting the employer's
+    decision on a worker's record would be a small unfairness that compounds --
+    prior behaviour feeds the ranking.
+    """
+    if not reason.strip():
+        raise RequestError("a cancellation must say why")
+
+    row = session.execute(
+        text(
+            """
+            SELECT status::text AS status, employer_id
+              FROM work_requests WHERE request_id = :rid
+            """
+        ),
+        {"rid": str(request_id)},
+    ).mappings().first()
+    if row is None or (
+        employer_id is not None and row["employer_id"] != employer_id
+    ):
+        raise RequestError("no such work request")
+    if row["status"] == "cancelled":
+        raise RequestError("this request is already cancelled")
+
+    started = session.execute(
+        text(
+            "SELECT count(*) FROM placements "
+            "WHERE request_id = :rid AND status IN ('active','completed')"
+        ),
+        {"rid": str(request_id)},
+    ).scalar_one()
+    if started:
+        raise RequestError(
+            f"{started} worker(s) have already started -- end those placements "
+            f"individually with a reason instead of cancelling the request"
+        )
+
+    affected = session.execute(
+        text(
+            """
+            UPDATE placements SET status = 'cancelled'
+             WHERE request_id = :rid AND status IN ('offered','accepted')
+            RETURNING placement_id, candidate_id
+            """
+        ),
+        {"rid": str(request_id)},
+    ).mappings().all()
+
+    session.execute(
+        text(
+            "UPDATE work_requests "
+            "   SET status = 'cancelled', safety_notes = "
+            "       COALESCE(safety_notes || ' | ', '') || :reason "
+            " WHERE request_id = :rid"
+        ),
+        {"rid": str(request_id), "reason": f"cancelled: {reason}"},
+    )
+
+    from app.messaging.events import on_placement_cancelled, on_placement_ended
+    from app.operations.attendance import refresh_candidate_status
+
+    for placement in affected:
+        # Stop anything still queued before telling them it is off, so the
+        # cancellation is not followed by a shift reminder.
+        on_placement_ended(session, placement["placement_id"], "request cancelled")
+        on_placement_cancelled(session, placement["placement_id"], reason)
+        refresh_candidate_status(session, placement["candidate_id"])
+
+    return {"request_id": request_id, "placements_cancelled": len(affected)}
+
+
 def open_requests(
     session: Session, statuses: tuple[str, ...] = ("open", "filling")
 ) -> list[dict]:

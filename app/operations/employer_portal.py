@@ -261,6 +261,22 @@ def reorder(
     )
 
 
+def cancel_request(
+    session: Session, employer_id: UUID, request_id: UUID, reason: str
+) -> dict:
+    """An employer withdrawing their own shift.
+
+    employer_id is passed through to the operation, which refuses anything
+    that is not theirs -- the request id in the URL proves nothing.
+    """
+    from app.operations.requests import RequestError, cancel_work_request
+
+    try:
+        return cancel_work_request(session, request_id, reason, employer_id)
+    except RequestError as exc:
+        raise EmployerPortalError(str(exc)) from exc
+
+
 def reliability_summary(session: Session, employer_id: UUID) -> dict:
     """What we promised this employer, and whether we delivered.
 

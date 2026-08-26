@@ -63,6 +63,7 @@ from app.operations.registry import (
 )
 from app.operations.requests import (
     RequestError,
+    cancel_work_request,
     create_work_request,
     offer_placement,
     open_requests,
@@ -755,6 +756,23 @@ async def create_request(
     except (RequestError, ValueError) as exc:
         return _back("/ui/requests", str(exc), "err")
     return _back(f"/ui/requests/{request_id}", "Posted — here is who matches")
+
+
+@router.post("/requests/{request_id}/cancel")
+def cancel_request_page(
+    request_id: UUID,
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    reason: Annotated[str, Form()],
+):
+    try:
+        result = cancel_work_request(session, request_id, reason)
+    except RequestError as exc:
+        return _back(f"/ui/requests/{request_id}", str(exc), "err")
+    return _back(
+        "/ui/requests",
+        f"Cancelled — {result['placements_cancelled']} worker(s) told it is off",
+    )
 
 
 @router.get("/requests/{request_id}", response_class=HTMLResponse)

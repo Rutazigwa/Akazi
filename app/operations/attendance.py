@@ -213,6 +213,22 @@ def log_attendance(
     no-show: the shift was covered on day one and the employer got what they
     bought.
     """
+    # Attendance only makes sense against work that is on. Without this a
+    # cancelled or completed placement could be flipped to 'no_show' by a
+    # stray log, which would invent a guarantee invocation for a shift that
+    # was not happening -- inflating the failure rate and sending a cover to
+    # an employer who cancelled.
+    status = session.execute(
+        text("SELECT status::text FROM placements WHERE placement_id = :pid"),
+        {"pid": str(placement_id)},
+    ).scalar_one_or_none()
+    if status is None:
+        raise AttendanceError("no such placement")
+    if status not in ("accepted", "active", "no_show"):
+        raise AttendanceError(
+            f"attendance cannot be recorded against a {status} placement"
+        )
+
     if not present and not absence_reason:
         raise AttendanceError(
             "an absence needs a reason -- it is the input to the follow-up "
@@ -246,6 +262,18 @@ def log_attendance(
     confirmed_at = row[0]
 
     if present:
+        # They did arrive after all. A no-show recorded in error would
+        # otherwise stand forever as a guarantee invocation against us, and
+        # against the worker's record.
+        if status == "no_show":
+            session.execute(
+                text(
+                    "UPDATE placements SET status = 'active' "
+                    "WHERE placement_id = :pid"
+                ),
+                {"pid": str(placement_id)},
+            )
+            refresh_candidate_status(session, _candidate_of(session, placement_id))
         return None
 
     # Was this the worker's first scheduled day? Count days actually attended:

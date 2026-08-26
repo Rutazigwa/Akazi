@@ -182,6 +182,32 @@ def on_replacement_sent(
     )
 
 
+def on_placement_cancelled(
+    session: Session, placement_id: UUID, reason: str
+) -> None:
+    """Tell a worker their shift is off, and that it was not their doing.
+
+    Worth saying explicitly: someone who accepted work and then hears nothing
+    reasonably assumes they were dropped, and the next offer is harder to fill.
+    """
+    ctx = _placement_context(session, placement_id)
+    if ctx is None:
+        return
+
+    queue(
+        session,
+        template_key="placement_cancelled",
+        body=render(
+            "placement_cancelled",
+            title=ctx["title"],
+            business_name=ctx["business_name"],
+            starts_on=f"{ctx['starts_on']:%d %b}",
+        ),
+        candidate_id=ctx["candidate_id"],
+        placement_id=placement_id,
+    )
+
+
 def on_placement_ended(
     session: Session, placement_id: UUID, reason: str
 ) -> None:
