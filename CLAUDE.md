@@ -661,6 +661,27 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Demonstrating the system is part of the go/no-go
+
+Twenty to thirty employer interviews decide whether this business proceeds,
+and "let me show you" beats a slide. `scripts/seed_demo.py` fills an empty
+database with a working operation: employers with logins, a scored candidate
+registry, completed placements, a guarantee invocation with its clock running,
+overdue pay, tomorrow's shifts and two escalations awaiting a response.
+
+It drives the API rather than writing rows, so **every rule applies on the way
+in**. That is not tidiness -- seeding past the rules would demonstrate a system
+nobody has. It also keeps the seeder honest: it kept being refused by the
+transport filter for pitching wages that do not survive the commute, and pay
+accuracy stayed at zero until the worker's confirmation was recorded, because
+the employer's word does not count.
+
+**It refuses any database that is not empty.** The check is crude on purpose --
+any existing candidate or employer stops it -- and it runs before the first
+request, so it cannot half-seed and then stop. A subtle check is one that can
+be argued around at the moment it matters, and what this writes is invented
+people with invented national identifiers.
+
 ### The dashboard was entirely reactive
 
 Escalations, overdue pay, a guarantee clock already running -- every section
