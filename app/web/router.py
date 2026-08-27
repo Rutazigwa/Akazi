@@ -230,6 +230,7 @@ SCORECARD_LABELS = [
     ("guarantee_filled_24h_pct", "Guarantee filled 24h %", "≥ 90"),
     ("women_placed_pct", "Women placed %", "≥ 45"),
     ("pay_accuracy_pct", "Pay accuracy %", "≥ 95"),
+    ("employer_reorder_pct", "Employer reorder %", "≥ 40"),
 ]
 
 

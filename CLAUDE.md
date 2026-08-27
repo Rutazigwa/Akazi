@@ -552,6 +552,27 @@ in is the setup for a convincing fake login page.
   opposite facts: a candidate with no home location passes the transport
   filter by default, and the coordinator has to see that before offering.
 
+### The reorder rate decides the pivot, so its denominator is not a detail
+
+`v_employer_reorder` answers one question: having been served, did they come
+back. Three choices in it are deliberate, and each one moves the number the
+blueprint's go/no-go rests on.
+
+- **Served employers only.** An employer nobody was placed with has not
+  declined to reorder -- they have not been served yet. Holding them against
+  the rate makes it measure something other than repeat business.
+- **A reorder is a request opened *after* the first placement**, not merely a
+  second request. An employer posting a cleaner and a guard on the same
+  morning has ordered twice and come back zero times. Counting that inflates
+  the metric precisely when the evidence for pivoting is strongest.
+- **Any route counts, not just the button.** `reorders_request` records
+  provenance and answers a product question about the one-click path.
+  Measuring only button presses would understate real repeat business.
+
+`opened_at` and `offered_at` default to `clock_timestamp()` for this view's
+sake: `now()` is the transaction timestamp, so rows written together tie, and
+a tie reads as "did not reorder". Same defect migration 011 fixed for consent.
+
 ### A test connected as the owner proves nothing about privileges
 
 The database owner bypasses every grant. So a suite that connects as the owner

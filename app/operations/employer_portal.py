@@ -209,6 +209,7 @@ def post_request(
     transport_covered: bool = False,
     meals_provided: bool = False,
     safety_notes: str | None = None,
+    reorders_request: UUID | None = None,
 ) -> UUID:
     """An employer posting their own shift.
 
@@ -231,6 +232,7 @@ def post_request(
         transport_covered=transport_covered,
         meals_provided=meals_provided,
         safety_notes=safety_notes,
+        reorders_request=reorders_request,
     )
 
 
@@ -242,6 +244,11 @@ def reorder(
     Reorder rate is a pilot metric and the clearest signal that the guarantee is
     worth paying for -- so repeating an order is one action, not a form to fill
     in again.
+
+    The new request records which one it repeats. That link is provenance, not
+    the metric: an employer who posts a second shift by filling the form in
+    again has come back just the same, so v_employer_reorder counts repeat
+    employers by any route. See migration 034.
     """
     original = _own_request(session, employer_id, request_id)
     return post_request(
@@ -258,6 +265,7 @@ def reorder(
         transport_covered=original["transport_covered"],
         meals_provided=original["meals_provided"],
         safety_notes=original["safety_notes"],
+        reorders_request=request_id,
     )
 
 

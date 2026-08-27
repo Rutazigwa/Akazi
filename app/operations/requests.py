@@ -42,6 +42,7 @@ def create_work_request(
     transport_covered: bool = False,
     meals_provided: bool = False,
     safety_notes: str | None = None,
+    reorders_request: UUID | None = None,
 ) -> UUID:
     if work_type not in WORK_TYPES:
         raise RequestError(f"work_type must be one of {WORK_TYPES}")
@@ -54,10 +55,10 @@ def create_work_request(
             INSERT INTO work_requests
                 (employer_id, title, work_type, headcount, starts_on, ends_on,
                  shift_start, shift_end, pay_rwf, pay_unit, transport_covered,
-                 meals_provided, safety_notes)
+                 meals_provided, safety_notes, reorders_request)
             VALUES (:eid, :title, CAST(:wtype AS work_type), :headcount,
                     :starts, :ends, :shift_start, :shift_end, :pay,
-                    :unit, :transport, :meals, :safety)
+                    :unit, :transport, :meals, :safety, :reorders)
             RETURNING request_id
             """
         ),
@@ -75,6 +76,7 @@ def create_work_request(
             "transport": transport_covered,
             "meals": meals_provided,
             "safety": safety_notes,
+            "reorders": str(reorders_request) if reorders_request else None,
         },
     ).scalar_one()
 

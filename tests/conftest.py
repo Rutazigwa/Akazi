@@ -224,6 +224,31 @@ def employer_id(session) -> uuid.UUID:
 
 
 @pytest.fixture
+def make_employer(session):
+    """Several employers in one test -- repeat business is a rate across them."""
+    def _make(name: str | None = None, is_cooperative: bool = False,
+              tier: str = "active"):
+        return session.execute(
+            text(
+                """
+                INSERT INTO employers (business_name, sector, district, tier,
+                                       is_cooperative)
+                VALUES (:name, 'cleaning', 'Gasabo', CAST(:tier AS employer_tier),
+                        :coop)
+                RETURNING employer_id
+                """
+            ),
+            {
+                "name": name or f"Employer {uuid.uuid4().hex[:6]}",
+                "tier": tier,
+                "coop": is_cooperative,
+            },
+        ).scalar_one()
+
+    return _make
+
+
+@pytest.fixture
 def make_request(session, employer_id):
     def _make(pay_rwf: int = 5000, headcount: int = 1):
         return session.execute(
