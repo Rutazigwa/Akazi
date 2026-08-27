@@ -616,6 +616,38 @@ and `erased_at`, both record metadata rather than facts about a person. Every
 identifying column stays behind the audited function. A test asserts that list
 exactly, so if it grows it grew deliberately.
 
+### The catalogue: assessments have to be definable, not just recordable
+
+`skills` and `assessments` shipped empty with no code able to insert into
+either. Everything downstream failed quietly as a result: `require_skill()`
+raised `unknown skill` for every code there was, so no work request could
+carry a requirement; `record_assessment_result()` needed an `assessment_id`
+that could not exist; and with no results, **matching filter 1 and rank
+criterion 3 never engaged**. Half of a weeks 1-6 deliverable -- the half that
+says what is being scored.
+
+Three rules hold in the database, because a bulk import of paper assessment
+sheets is exactly the path that skips the application:
+
+- **`max_score` and `pass_score` freeze once a result exists.** A candidate
+  assessed 3 of 5 against a pass mark of 3 passed; raise the mark to 4 and
+  they have retroactively always failed, including for placements already
+  made on that score. Migration 026 froze contract terms for the same reason.
+  Bounds stay editable until the first result, so a setup typo is cheap.
+- **`skill_code` is immutable**; the display name is not. The code is what
+  `require_skill()` resolves and what appears in notes and import sheets.
+- **Rubric wording stays editable forever.** Sharpening how a criterion is
+  described does not change who passed.
+
+Authoring is admin/owner: a pass mark decides who is eligible for work, which
+is policy. Recording a result stays with coordinators, and the response gives
+the scale back -- `4 out of 5, passed` -- because "4" alone is what a
+coordinator would otherwise read aloud to an employer asking why this person.
+
+The rubric is surfaced to whoever scores. It was stored and displayed nowhere,
+which is how two coordinators score the same performance differently and
+matching then ranks on noise.
+
 ### readonly means readonly, and it is enforced by HTTP method
 
 `readonly` sat in the `staff_role` enum, was assignable through `POST /staff`,

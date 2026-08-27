@@ -14,6 +14,7 @@ from app.config import Residency, get_settings
 from app.db import session_scope
 from app.routers import (
     auth,
+    catalogue,
     cohorts,
     data_rights,
     identity,
@@ -42,6 +43,7 @@ settings = get_settings()
 app = FastAPI(title=settings.app_name, debug=settings.debug)
 app.include_router(auth.router)
 app.include_router(identity.router)
+app.include_router(catalogue.router)
 app.include_router(cohorts.router)
 app.include_router(data_rights.router)
 app.include_router(registry.router)

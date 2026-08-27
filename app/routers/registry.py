@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app.deps import IdentityStaffDep, SessionDep, StaffDep
+from app.operations.catalogue import assessment_for_scoring
 from app.operations.registry import (
     AvailabilitySlot,
     RegistryError,
@@ -267,4 +268,14 @@ def add_assessment_result(
         session, candidate_id, body.assessment_id, body.score,
         staff.staff_id, body.notes,
     )
-    return {"result_id": result_id}
+    # Echo the scale back. "4" means nothing on its own, and this is the number
+    # matching filters on and a coordinator reads aloud to an employer asking
+    # why this person -- so the response says 4 out of 5, passed.
+    scored = assessment_for_scoring(session, body.assessment_id)
+    return {
+        "result_id": result_id,
+        "score": body.score,
+        "max_score": scored["max_score"],
+        "passed": body.score >= scored["pass_score"],
+        "skill_code": scored["skill_code"],
+    }
