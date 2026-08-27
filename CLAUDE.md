@@ -661,6 +661,37 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### A job that stops running looks exactly like a job with nothing to do
+
+Messages are queued by the application and sent by a cron. Nothing knew
+whether that cron was alive. If it dies -- a container replaced without its
+crontab, a deploy that half-finished -- the queue stops draining and nothing
+says so: `/health` reports "ok" because the web application is fine. It is the
+part nobody watches that stopped, and it costs money, because an unreminded
+worker is a no-show and a no-show invokes the guarantee.
+
+Two signals, because they fail differently and neither is sufficient alone:
+
+- **`job_runs` is the heartbeat.** Only it separates a stalled cron from a
+  quiet evening -- an empty outbox looks identical either way. Written even
+  when the run raises: a job that crashes on every attempt is the case most
+  worth catching.
+- **`v_overdue_messages` is the symptom**, read from the outbox itself. It
+  stays true when the dispatcher runs happily and fails at every send.
+
+`messaging_status()` reports `ok` / `behind` / `failing` / `stalled` /
+`unknown`, and a stall outranks a backlog: both are true at once, and the
+coordinator needs the cause rather than the symptom.
+
+**It never changes the HTTP status.** A stalled cron does not mean this
+container is unwell, and a 503 would have an orchestrator restart the one part
+that is still working. Monitoring alerts on the field; the orchestrator reads
+the status code. The dashboard shows it too -- the person sitting in front of
+it is the one who can phone the worker the reminder never reached.
+
+Any scheduled work added later goes through `recorded_run()`. A job nothing
+watches is a job that will one day stop without anyone noticing.
+
 ### Demonstrating the system is part of the go/no-go
 
 Twenty to thirty employer interviews decide whether this business proceeds,

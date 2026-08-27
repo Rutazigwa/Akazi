@@ -101,6 +101,18 @@
   </div>
 </div>
 
+{% if messaging.state not in ('ok', 'unknown') %}
+<div class="card urgent">
+  <h2 style="margin-top:0">Messages are not going out</h2>
+  <p class="small">{{ messaging.reason }}.</p>
+  <p class="small muted">
+    Nothing reaches a worker while this is true — no shift reminders, no
+    placement offers. An unreminded worker is a no-show, and a no-show invokes
+    the guarantee. Check that the dispatcher cron is running.
+  </p>
+</div>
+{% endif %}
+
 {% if tomorrow_unstaffed or tomorrow_flagged %}
 <div class="card {% if tomorrow_unstaffed %}urgent{% endif %}">
   <h2 style="margin-top:0">Tomorrow needs attention</h2>

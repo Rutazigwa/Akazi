@@ -17,6 +17,7 @@ provider is configured.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import os
 import sys
@@ -25,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.db import session_scope  # noqa: E402
 from app.messaging.outbox import dispatch, outbox_summary  # noqa: E402
+from app.operations.jobs import recorded_run  # noqa: E402
 from app.messaging.providers import RecordingProvider  # noqa: E402
 
 
@@ -55,7 +57,15 @@ def main() -> int:
             )
             return 2
 
-        report = dispatch(session, RecordingProvider(), limit=args.limit)
+        # Recorded whether or not it succeeds. A dispatcher that crashes on
+        # every run is exactly the case worth catching, and until this existed
+        # a cron that stopped looked identical to an evening with nothing to
+        # send. See migration 037.
+        with recorded_run(session, "dispatch_messages") as detail:
+            report = dispatch(session, RecordingProvider(), limit=args.limit)
+            # Structured, not str(report): "sent=5 failed=0" is unreadable to
+            # anything that wants to alert on a rising failure count.
+            detail.update(dataclasses.asdict(report))
         print(report)
     return 0
 

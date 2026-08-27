@@ -211,6 +211,40 @@ anything reaches a real person.
 Nothing is sent between 21:00 and 07:00 Kigali; messages due then are deferred to
 07:00 rather than dropped.
 
+### Alert when it stops
+
+Every run writes a row to `job_runs`, so a cron that dies is distinguishable
+from an evening with nothing to send — without that, the two look identical
+and the queue simply stops draining. Nothing reaches a worker while that is
+true: no shift reminders, no placement offers. An unreminded worker is a
+no-show, a no-show invokes the guarantee, and the guarantee is priced into
+the fee.
+
+`GET /health` reports it:
+
+```json
+{"status": "ok",
+ "messaging": {"state": "stalled",
+               "reason": "the dispatcher last ran 40 minutes ago; it is meant to run every 5",
+               "overdue": 12}}
+```
+
+**Alert on `messaging.state`, not on the HTTP status.** The status code stays
+200: a stalled cron does not mean the web container is unwell, and a 503 would
+have the orchestrator restart the one part that is still working. States are
+`ok`, `behind` (messages are late but the dispatcher is running), `failing`
+(the last run raised), `stalled` (no run in fifteen minutes) and `unknown`
+(no run ever recorded, or the database is unreachable).
+
+The dashboard shows the same thing to whoever is sitting in front of it —
+they are the one who can phone the worker the reminder never reached.
+
+Prune the heartbeat occasionally so it does not grow without bound:
+
+```bash
+0 4 * * *  cd /app && psql "$DATABASE_URL" -c "SELECT prune_job_runs(30)"
+```
+
 ## Publish the audit chain head
 
 `GET /staff/audit/integrity` returns `head_hash`. Record it somewhere the server

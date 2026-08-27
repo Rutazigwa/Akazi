@@ -102,9 +102,24 @@ def health(response: Response) -> dict[str, object]:
         database = "down"
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
+    # Reported, never turned into an HTTP failure. A stalled cron does not
+    # mean this container is unwell, and a 503 would have an orchestrator
+    # restart the one part that is still working. Monitoring alerts on the
+    # field; the orchestrator reads the status code.
+    messaging: dict[str, object] = {"state": "unknown"}
+    if database == "up":
+        try:
+            from app.operations.jobs import messaging_status
+
+            with session_scope() as session:
+                messaging = messaging_status(session)
+        except Exception as exc:  # pragma: no cover - defensive
+            messaging = {"state": "unknown", "reason": str(exc)}
+
     return {
         "status": "ok" if database == "up" else "degraded",
         "database": database,
+        "messaging": messaging,
         "data_residency": settings.data_residency.value,
         # Surfaced so a misconfigured deployment is visible in monitoring, not
         # only at startup.
