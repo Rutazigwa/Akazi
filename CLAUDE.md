@@ -661,6 +661,47 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### A defined response time has to be enforced by something
+
+The blueprint promises a harassment report with a named escalation path and a
+**defined response time**. The path was named and the time stored in
+`escalations.respond_by` -- and when it passed, the only thing that happened
+was a pill turning red on a page. Evening, weekend, a coordinator out on a
+site visit: nobody has that page open, and a woman's report sits.
+
+`sweep_escalations.py` alerts on it. Four choices in it matter:
+
+- **Once, recorded in `breach_alerted_at`.** Re-alerting every five minutes
+  until someone acts is how an alert becomes noise, and noise is how the next
+  one gets ignored.
+- **Not to whoever already missed it.** The point of a missed deadline is that
+  the first line did not act. An owner who missed their own still gets told --
+  there is nobody above them and silence would be worse.
+- **By SMS, and it names only the kind.** It must not depend on someone having
+  WhatsApp open, and a missed deadline is a prompt to open the system, not a
+  channel for what was reported.
+- **Nobody to tell leaves it unmarked**, so the next run tries again. An alert
+  nobody can receive is not "handled".
+
+### Quiet hours protect workers, not the operation
+
+Nothing goes to a candidate between 21:00 and 07:00 Kigali. That rule exists
+so a worker is not woken about a shift -- it is **not** a reason to sit on an
+internal alert. A harassment escalation that missed its response time at 22:00
+reaches the owner at 22:00. Staff are on duty in a way candidates are not.
+
+Messages to staff are a third recipient kind on the outbox, and the exactly-
+one-recipient constraint now counts three. Keeping them a separate kind rather
+than reusing `contact_id` is the point: for staff there is no consent question
+at all, which is exactly why they must not be conflated with people who have
+one.
+
+### An untyped NULL parameter has no type
+
+`:x IS NULL` fails with "could not determine data type of parameter" when the
+value bound is None. This has now cost time three times. Write
+`CAST(:x AS uuid) IS NULL`, and cast at the first use rather than the second.
+
 ### A job that stops running looks exactly like a job with nothing to do
 
 Messages are queued by the application and sent by a cron. Nothing knew

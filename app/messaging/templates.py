@@ -117,6 +117,19 @@ TEMPLATES: dict[str, Template] = {
             "arrive, tell us and we cover the slot free of charge."
         ),
     ),
+    # Internal, to a member of staff. No consent gate: staff are not data
+    # subjects of the messaging consent regime, they are on duty. It carries
+    # no name and no detail of what was reported -- a missed response time is
+    # a prompt to open the escalation, not a channel for the report itself.
+    "escalation_breach": Template(
+        key="escalation_breach",
+        requires_consent=False,
+        text=(
+            "Akazi: a {kind} escalation raised {raised} has not been "
+            "acknowledged. It was due a response by {respond_by}.\n"
+            "Open it now: {link}"
+        ),
+    ),
     "employer_cover_sent": Template(
         key="employer_cover_sent",
         requires_consent=False,

@@ -232,6 +232,31 @@ anything reaches a real person.
 Nothing is sent between 21:00 and 07:00 Kigali; messages due then are deferred to
 07:00 rather than dropped.
 
+Internal alerts to staff are the exception, and are sent whatever the hour.
+Quiet hours exist so a worker is not woken at 23:00 about a shift; they are
+not a reason to sit on a harassment escalation that missed its response time
+at 22:00. Staff are on duty in a way candidates are not.
+
+## Escalations that missed their response time
+
+```bash
+*/5 * * * *  cd /app && python scripts/sweep_escalations.py
+```
+
+Its own cron line and its own heartbeat rather than folding into the
+dispatcher: a failure in one would hide the state of the other, and this is
+the job whose silence is least acceptable. Without it a missed response time
+only turns a pill red on the dashboard — and if nobody has the dashboard open,
+nothing happens at all.
+
+The alert goes to an owner or admin other than whoever already missed it, by
+SMS, once. It names the kind of escalation and nothing else: a missed deadline
+is a prompt to open the system, not a channel for what somebody reported.
+
+If it prints `unroutable`, there was a breached escalation and nobody active
+to tell. Those are left unmarked deliberately, so the next run tries again —
+an alert nobody can receive is not "handled".
+
 ### Alert when it stops
 
 Every run writes a row to `job_runs`, so a cron that dies is distinguishable

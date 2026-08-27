@@ -228,3 +228,97 @@ def response_performance(session: Session) -> list[dict]:
         )
     ).mappings()
     return [dict(r) for r in rows]
+
+
+def alert_on_missed_response_times(session: Session) -> dict:
+    """Tell someone about escalations that blew their response time.
+
+    Until this existed, a missed response time turned a pill red on a page.
+    If nobody had that page open -- evening, weekend, a coordinator out on a
+    site visit -- a harassment report sat unacknowledged and the system was
+    content. The blueprint promises a named escalation path and a defined
+    response time; the time was defined and nothing enforced it.
+
+    Alerted once, recorded on the escalation. Re-alerting every five minutes
+    until someone acknowledges is how an alert becomes noise, and noise is how
+    the next one is ignored.
+
+    Deliberately not resent to whoever already missed it: the owner is told,
+    because the point of a missed deadline is that the first line did not act.
+    """
+    from app.messaging.outbox import queue
+    from app.messaging.templates import render
+
+    breached = session.execute(
+        text(
+            """
+            SELECT e.escalation_id, e.kind::text AS kind, e.raised_at,
+                   e.respond_by, e.owner_staff_id
+              FROM escalations e
+             WHERE e.status = 'open'
+               AND e.acknowledged_at IS NULL
+               AND e.respond_by < now()
+               AND e.breach_alerted_at IS NULL
+             ORDER BY e.respond_by
+             FOR UPDATE SKIP LOCKED
+            """
+        )
+    ).mappings().all()
+
+    alerted, unroutable = 0, 0
+    for row in breached:
+        recipient = _breach_recipient(session, row["owner_staff_id"])
+        if recipient is None:
+            # Left unmarked on purpose, so it is picked up again once somebody
+            # is available. An alert nobody can receive is not "handled".
+            unroutable += 1
+            continue
+
+        queue(
+            session,
+            template_key="escalation_breach",
+            body=render(
+                "escalation_breach",
+                kind=row["kind"],
+                raised=row["raised_at"].strftime("%d %b %H:%M"),
+                respond_by=row["respond_by"].strftime("%d %b %H:%M"),
+                link=f"/ui/#escalation-{row['escalation_id']}",
+            ),
+            staff_id=recipient,
+        )
+        session.execute(
+            text("UPDATE escalations SET breach_alerted_at = clock_timestamp() "
+                 "WHERE escalation_id = :eid"),
+            {"eid": str(row["escalation_id"])},
+        )
+        alerted += 1
+
+    return {"alerted": alerted, "unroutable": unroutable,
+            "breached": len(breached)}
+
+
+def _breach_recipient(session: Session, owner_staff_id) -> UUID | None:
+    """Somebody other than whoever already missed it, if there is anybody.
+
+    An owner who missed their own deadline still gets told -- there is nobody
+    above them, and silence would be worse than a redundant message.
+    """
+    above = session.execute(
+        text(
+            "SELECT staff_id FROM staff "
+            "WHERE role IN ('owner', 'admin') AND is_active "
+            # Cast before the IS NULL: an untyped NULL parameter leaves
+            # PostgreSQL nothing to infer the type from.
+            "  AND (CAST(:owner AS uuid) IS NULL "
+            "       OR staff_id <> CAST(:owner AS uuid)) "
+            "ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END, created_at "
+            "LIMIT 1"
+        ),
+        {"owner": str(owner_staff_id) if owner_staff_id else None},
+    ).scalar_one_or_none()
+    if above:
+        return above
+    return session.execute(
+        text("SELECT staff_id FROM staff WHERE is_active "
+             "AND role IN ('owner', 'admin') ORDER BY created_at LIMIT 1")
+    ).scalar_one_or_none()

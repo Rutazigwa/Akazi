@@ -16,6 +16,8 @@ failure count hides the real errors.
 
 from __future__ import annotations
 
+import dataclasses
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
@@ -105,6 +107,7 @@ def queue(
     body: str,
     candidate_id: UUID | None = None,
     contact_id: UUID | None = None,
+    staff_id: UUID | None = None,
     placement_id: UUID | None = None,
     channel: str | None = None,
     scheduled_for: datetime | None = None,
@@ -115,18 +118,23 @@ def queue(
     the same shift reminder twice because a coordinator clicked twice should be
     a no-op, not two messages that make us look disorganised.
     """
-    if (candidate_id is None) == (contact_id is None):
+    recipients = [r for r in (candidate_id, contact_id, staff_id) if r]
+    if len(recipients) != 1:
         raise MessagingError("a message needs exactly one recipient")
 
     if channel is None:
-        channel = preferred_channel(session, candidate_id)
+        # Staff get SMS: an internal alert must not depend on someone having
+        # WhatsApp open, and this is the path used when a response time has
+        # already been missed.
+        channel = "sms" if staff_id else preferred_channel(session, candidate_id)
 
     row = session.execute(
         text(
             """
-            INSERT INTO messages (candidate_id, contact_id, placement_id,
-                                  channel, template_key, body, scheduled_for)
-            VALUES (:candidate_id, :contact_id, :placement_id,
+            INSERT INTO messages (candidate_id, contact_id, staff_id,
+                                  placement_id, channel, template_key, body,
+                                  scheduled_for)
+            VALUES (:candidate_id, :contact_id, :staff_id, :placement_id,
                     CAST(:channel AS message_channel), :template_key, :body,
                     COALESCE(:scheduled_for, clock_timestamp()))
             ON CONFLICT DO NOTHING
@@ -136,6 +144,7 @@ def queue(
         {
             "candidate_id": str(candidate_id) if candidate_id else None,
             "contact_id": str(contact_id) if contact_id else None,
+            "staff_id": str(staff_id) if staff_id else None,
             "placement_id": str(placement_id) if placement_id else None,
             "channel": channel,
             "template_key": template_key,
@@ -190,16 +199,36 @@ def dispatch(
     moment = now or datetime.now(timezone.utc)
 
     if in_quiet_hours(moment):
+        # Quiet hours exist so we do not wake a worker at 23:00 about a shift.
+        # They are not a reason to sit on an internal alert: a harassment
+        # escalation that missed its response time at 22:00 must reach the
+        # owner at 22:00, and staff are on duty in a way candidates are not.
         deferred = session.execute(
             text(
                 """
                 UPDATE messages SET scheduled_for = :next
                  WHERE status = 'queued' AND scheduled_for <= :now
+                   AND staff_id IS NULL
                 """
             ),
             {"next": next_send_window(moment), "now": moment},
         ).rowcount
-        return DispatchReport(deferred=deferred)
+        # The report is frozen, so the deferral count is folded in rather
+        # than added to it.
+        internal = _dispatch_due(session, provider, limit, moment, staff_only=True)
+        return dataclasses.replace(internal, deferred=internal.deferred + deferred)
+
+    return _dispatch_due(session, provider, limit, moment)
+
+
+def _dispatch_due(
+    session: Session,
+    provider,
+    limit: int,
+    moment: datetime,
+    staff_only: bool = False,
+) -> DispatchReport:
+    """Send the messages that are due, optionally only the internal ones."""
 
     due = session.execute(
         text(
@@ -208,12 +237,13 @@ def dispatch(
                    body, attempts, template_key
               FROM messages
              WHERE status = 'queued' AND scheduled_for <= :now
+               AND (NOT :staff_only OR staff_id IS NOT NULL)
              ORDER BY scheduled_for
              LIMIT :limit
              FOR UPDATE SKIP LOCKED
             """
         ),
-        {"now": moment, "limit": limit},
+        {"now": moment, "limit": limit, "staff_only": staff_only},
     ).mappings().all()
 
     report = DispatchReport()
