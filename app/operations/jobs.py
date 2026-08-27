@@ -32,6 +32,12 @@ STALE_AFTER_MINUTES = DISPATCH_INTERVAL_MINUTES * 3
 # late means it is not moving.
 OVERDUE_AFTER_MINUTES = 60
 
+# Backups run nightly. One missed run is a real gap rather than a slow night,
+# but a threshold at exactly 24 hours would fire every time the cron drifts by
+# a minute, and an alert that fires daily is an alert nobody reads.
+BACKUP_INTERVAL_HOURS = 24
+BACKUP_STALE_AFTER_MINUTES = 30 * 60
+
 
 def start_run(session: Session, job_name: str) -> UUID:
     return session.execute(
@@ -78,10 +84,18 @@ def recorded_run(session: Session, job_name: str):
 
 
 def job_health(session: Session) -> list[dict]:
-    return [
-        dict(row)
-        for row in session.execute(text("SELECT * FROM v_job_health")).mappings()
-    ]
+    """The last run of each job.
+
+    minutes_since is cast at the boundary: SQL ROUND returns Decimal, which
+    will not divide by a float, and every caller wants a number rather than a
+    lesson in numeric types.
+    """
+    rows = []
+    for row in session.execute(text("SELECT * FROM v_job_health")).mappings():
+        run = dict(row)
+        run["minutes_since"] = float(run["minutes_since"])
+        rows.append(run)
+    return rows
 
 
 def overdue_messages(
@@ -94,6 +108,43 @@ def overdue_messages(
             {"m": older_than_minutes},
         ).mappings()
     ]
+
+
+def backup_status(session: Session) -> dict:
+    """When the last backup ran, and whether it was any good.
+
+    A backup cron that stopped is discovered at restore time, which is the
+    worst possible moment to discover anything. backup.sh already refuses to
+    write an unencrypted dump and verifies what it wrote -- but a script that
+    is not being run verifies nothing.
+
+    A failed backup counts as no backup. "It ran" is not the question.
+    """
+    health = {row["job_name"]: row for row in job_health(session)}
+    backup = health.get("backup")
+
+    if backup is None:
+        return {
+            "state": "unknown",
+            "reason": "no backup has ever recorded a run",
+            "hours_ago": None,
+        }
+
+    hours = backup["minutes_since"] / 60.0
+    if backup["last_ok"] is False:
+        state = "failing"
+        reason = f"the last backup failed: {backup['last_error']}"
+    elif backup["minutes_since"] > BACKUP_STALE_AFTER_MINUTES:
+        state = "stale"
+        reason = (
+            f"the last successful backup was {hours:.0f} hours ago; "
+            f"backups are meant to run every {BACKUP_INTERVAL_HOURS}"
+        )
+    else:
+        state = "ok"
+        reason = f"last backup {hours:.0f} hours ago, verified"
+
+    return {"state": state, "reason": reason, "hours_ago": round(hours, 1)}
 
 
 def messaging_status(session: Session) -> dict:

@@ -689,8 +689,15 @@ that is still working. Monitoring alerts on the field; the orchestrator reads
 the status code. The dashboard shows it too -- the person sitting in front of
 it is the one who can phone the worker the reminder never reached.
 
-Any scheduled work added later goes through `recorded_run()`. A job nothing
-watches is a job that will one day stop without anyone noticing.
+Backups are the same failure with a worse ending: a stopped backup cron is
+discovered at restore time. `backup.sh` records each run, and records a
+**failed** one as failed -- otherwise the last row still says success and the
+gap reads as a quiet night. A failed backup is no backup; "it ran" is not the
+question.
+
+Any scheduled work added later goes through `recorded_run()`, or writes the
+same row if it is a shell script. A job nothing watches is a job that will one
+day stop without anyone noticing.
 
 ### Demonstrating the system is part of the go/no-go
 

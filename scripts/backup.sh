@@ -29,6 +29,26 @@ fi
 
 mkdir -p "$DEST"
 
+# Record the run, so a backup cron that stopped is visible before restore day
+# rather than on it. Recording is best-effort on purpose: a backup that
+# succeeded but could not write its heartbeat is still a backup, and losing it
+# over a bookkeeping failure would be absurd. A warning is enough -- the
+# absence of runs is itself the alarm.
+record() {  # record <ok> <detail-json> [error]
+    local ok="$1" detail="$2" error="${3:-}"
+    psql "$DSN" -v ON_ERROR_STOP=1 -qtAc "
+        INSERT INTO job_runs (job_name, finished_at, ok, detail, error)
+        VALUES ('backup', clock_timestamp(), $ok,
+                \$json\$$detail\$json\$::jsonb,
+                NULLIF('$(printf '%s' "$error" | sed "s/'/''/g")', ''))
+    " >/dev/null 2>&1 || echo "warning: could not record this run in job_runs" >&2
+}
+
+# Anything that exits non-zero from here on is a failed backup, and a failed
+# backup has to be recorded as one -- otherwise the last row still says
+# success and the gap looks like a healthy quiet night.
+trap 'record false "{}" "backup failed at line $LINENO"' ERR
+
 pg_dump --no-owner --no-privileges "$DSN" \
     | gzip -9 \
     | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
@@ -61,10 +81,14 @@ verify() {
 if [ "$(verify)" -ge 1 ]; then
     echo "verified: decrypts, unpacks, and the dump is complete"
 else
+    record false "{}" "verification failed for $OUT"
     echo "VERIFICATION FAILED -- do not rely on $OUT" >&2
     exit 1
 fi
 
 deleted=$(find "$DEST" -name 'akazi-*.sql.gz.enc' -mtime "+$RETENTION_DAYS" -print -delete | wc -l)
 [ "$deleted" -gt 0 ] && echo "pruned $deleted backup(s) older than $RETENTION_DAYS days"
+
+trap - ERR
+record true "{\"bytes\": $(stat -c%s "$OUT"), \"verified\": true, \"pruned\": $deleted}"
 exit 0

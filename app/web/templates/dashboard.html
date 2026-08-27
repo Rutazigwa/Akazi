@@ -101,6 +101,18 @@
   </div>
 </div>
 
+{% if backups.state not in ('ok', 'unknown') %}
+<div class="card urgent">
+  <h2 style="margin-top:0">Backups are not running</h2>
+  <p class="small">{{ backups.reason }}.</p>
+  <p class="small muted">
+    A backup cron that stopped is otherwise discovered at restore time, which
+    is the worst possible moment. The dump holds national ID numbers and home
+    locations — losing it is a notifiable breach, not an inconvenience.
+  </p>
+</div>
+{% endif %}
+
 {% if messaging.state not in ('ok', 'unknown') %}
 <div class="card urgent">
   <h2 style="margin-top:0">Messages are not going out</h2>

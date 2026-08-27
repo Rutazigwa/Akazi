@@ -159,6 +159,27 @@ a guess, and the day you discover it was wrong is the worst possible day.
 copy of the backups off the machine — a backup that burns with the building is
 not a backup.
 
+Every run records itself in `job_runs`, so a backup cron that stopped is
+visible now rather than at restore time. A failed run is recorded as failed —
+otherwise the last row still says success and a gap looks like a healthy quiet
+night. `GET /health` reports it under `backups`, alongside `messaging`:
+
+```json
+{"backups": {"state": "stale",
+             "reason": "the last successful backup was 51 hours ago; backups are meant to run every 24",
+             "hours_ago": 51.2}}
+```
+
+States are `ok`, `failing` (the last run did not complete — a failed backup is
+no backup), `stale` (nothing successful in 30 hours) and `unknown` (nothing
+ever recorded). Alert on the field, not the status code, for the same reason
+as messaging.
+
+Recording is best-effort: a backup that succeeded but could not write its
+heartbeat is still a backup, and losing it over bookkeeping would be absurd.
+If the database is unreachable the run cannot be recorded at all — but then no
+new rows appear, and the absence is itself the alarm.
+
 Restores are tested automatically: `tests/test_backup.py` takes a real backup
 and restores it into a fresh database on every CI run, verifying that row counts
 match and that the audit hash chain still validates afterwards.

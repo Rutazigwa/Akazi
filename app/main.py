@@ -107,19 +107,23 @@ def health(response: Response) -> dict[str, object]:
     # restart the one part that is still working. Monitoring alerts on the
     # field; the orchestrator reads the status code.
     messaging: dict[str, object] = {"state": "unknown"}
+    backups: dict[str, object] = {"state": "unknown"}
     if database == "up":
         try:
-            from app.operations.jobs import messaging_status
+            from app.operations.jobs import backup_status, messaging_status
 
             with session_scope() as session:
                 messaging = messaging_status(session)
+                backups = backup_status(session)
         except Exception as exc:  # pragma: no cover - defensive
             messaging = {"state": "unknown", "reason": str(exc)}
+            backups = {"state": "unknown", "reason": str(exc)}
 
     return {
         "status": "ok" if database == "up" else "degraded",
         "database": database,
         "messaging": messaging,
+        "backups": backups,
         "data_residency": settings.data_residency.value,
         # Surfaced so a misconfigured deployment is visible in monitoring, not
         # only at startup.

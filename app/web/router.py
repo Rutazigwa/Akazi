@@ -57,7 +57,7 @@ from app.operations.catalogue import (
     list_skills,
 )
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
-from app.operations.jobs import messaging_status
+from app.operations.jobs import backup_status, messaging_status
 from app.operations.readiness import shifts_on, unstaffed_shifts_on
 from app.operations.pay import (
     PayError,
@@ -275,6 +275,7 @@ def dashboard(request: Request, session: SessionDep, staff: WebStaffDep):
         # of the screen catches it now, and they are the one who can phone the
         # worker the reminder never reached.
         messaging=messaging_status(session),
+        backups=backup_status(session),
         scorecard_rows=[
             (label, card[key], target) for key, label, target in SCORECARD_LABELS
         ],
