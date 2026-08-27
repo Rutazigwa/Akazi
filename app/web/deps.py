@@ -25,7 +25,7 @@ from fastapi.responses import RedirectResponse
 
 from app.auth import AuthenticatedStaff, AuthError, authenticate
 from app.config import Residency, get_settings
-from app.deps import SessionDep
+from app.deps import SAFE_METHODS, SessionDep
 
 SESSION_COOKIE = "akazi_session"
 
@@ -59,6 +59,12 @@ class PasswordChangeRequired(Exception):
 # Reachable while a change is outstanding: the change page itself, and leaving.
 PASSWORD_CHANGE_EXEMPT = frozenset({"/ui/password", "/ui/logout", "/ui/login"})
 
+# The same rule the API applies, for the browser side. Managing your own
+# session is not an operational write.
+READONLY_ALLOWED_WRITES = frozenset(
+    {"/ui/login", "/ui/logout", "/ui/password", "/ui/mfa"}
+)
+
 
 def current_web_staff(
     request: Request,
@@ -80,6 +86,18 @@ def current_web_staff(
         and request.url.path not in PASSWORD_CHANGE_EXEMPT
     ):
         raise PasswordChangeRequired()
+
+    # A readonly account may look, and change nothing. See app/deps.py for why
+    # this is keyed on the method rather than on a list of write endpoints.
+    if (
+        staff.role == "readonly"
+        and request.method not in SAFE_METHODS
+        and request.url.path not in READONLY_ALLOWED_WRITES
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="this account is readonly and cannot change anything",
+        )
 
     session.execute(
         text("SELECT set_config('app.staff_id', :sid, true)"),

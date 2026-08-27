@@ -44,6 +44,50 @@ PASSWORD_CHANGE_EXEMPT = frozenset(
 )
 
 
+# What a readonly account may still POST to. Managing your own session is not
+# an operational write: without these, a readonly account could not complete a
+# login, enrol a second factor, or spend its temporary password.
+READONLY_ALLOWED_WRITES = frozenset(
+    {
+        "/auth/login",
+        "/auth/logout",
+        "/auth/password",
+        "/auth/mfa",
+        "/auth/totp/enrol",
+        "/auth/totp/confirm",
+    }
+)
+
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _refuse_readonly_writes(staff: AuthenticatedStaff, request: Request) -> None:
+    """A readonly account may look at anything it is entitled to, and change
+    nothing.
+
+    Enforced here rather than route by route. The role existed in the enum,
+    was assignable, and was shown back on login, but nothing anywhere checked
+    it -- a readonly account could register candidates, promote employers and
+    post work requests. Someone handed that role believing they could only
+    look had, in fact, full write access.
+
+    Keying on the HTTP method rather than a list of write endpoints is the
+    point: "changes nothing" maps exactly onto method semantics, so a route
+    added tomorrow is covered without anyone remembering to add it. A GET that
+    writes would slip through, but a GET that writes is already a bug.
+    """
+    if staff.role != "readonly":
+        return
+    if request.method in SAFE_METHODS:
+        return
+    if request.url.path in READONLY_ALLOWED_WRITES:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="this account is readonly and cannot change anything",
+    )
+
+
 def current_staff(
     request: Request,
     session: SessionDep,
@@ -73,6 +117,8 @@ def current_staff(
                 "anything else: POST /auth/password"
             ),
         )
+
+    _refuse_readonly_writes(staff, request)
 
     # Everything written from here on is attributable to this person.
     session.execute(

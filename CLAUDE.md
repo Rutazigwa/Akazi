@@ -616,6 +616,42 @@ and `erased_at`, both record metadata rather than facts about a person. Every
 identifying column stays behind the audited function. A test asserts that list
 exactly, so if it grows it grew deliberately.
 
+### readonly means readonly, and it is enforced by HTTP method
+
+`readonly` sat in the `staff_role` enum, was assignable through `POST /staff`,
+was validated by the request schema and echoed back on login -- and was
+checked nowhere. An account holding it could register candidates, promote
+employers and post work requests. Both the person given the role and the
+person granting it would have believed it meant "can only look".
+
+The gate lives in `current_staff` and `current_web_staff`, keyed on the
+request method rather than on a list of write endpoints. That is deliberate:
+"changes nothing" maps exactly onto method semantics, so a route added later
+is covered without anyone remembering to protect it. A GET that writes would
+slip through, but a GET that writes is already a bug.
+
+`READONLY_ALLOWED_WRITES` is the narrow exception -- login, logout, password,
+MFA, TOTP enrolment. Managing your own session is not an operational write,
+and without those a readonly account could not finish logging in. Keep that
+list tiny, for the same reason `PASSWORD_CHANGE_EXEMPT` is tiny.
+
+The employer portal is out of scope here: employers are a separate principal
+with no staff role, and their isolation rules apply instead.
+
+### A coverage test that examines nothing is worse than no test
+
+`test_every_staff_write_route_is_behind_the_readonly_gate` passed on its first
+run while checking **zero** routes. `app.routes` holds router wrappers, not
+endpoints; iterating it finds six objects and no routes, so the assertion was
+`[] == []`. It looked exactly like coverage and proved nothing.
+
+Walk into `_IncludedRouter.original_router` to reach real routes -- there are
+132, 80 of them writes. `test_the_route_walker_actually_finds_routes` asserts
+the walker returns a plausible number, so the next person to break the walk
+gets a failure instead of a green tick. **Any test asserting "nothing is
+wrong" across a collection needs a companion asserting the collection is not
+empty.**
+
 ### Auth invariants -- do not relax these
 
 - **Identity data requires MFA on the current session.** A password alone
