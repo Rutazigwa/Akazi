@@ -15,8 +15,10 @@ from app.operations.requests import (
     RequestError,
     cancel_work_request,
     create_work_request,
+    drop_skill_requirement,
     offer_placement,
     open_requests,
+    request_requirements,
     require_skill,
     respond_to_offer,
 )
@@ -109,6 +111,26 @@ def add_skill(
     except RequestError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"request_id": request_id, "skill_code": body.skill_code}
+
+
+@router.get("/work-requests/{request_id}/skills")
+def list_required_skills(
+    request_id: UUID, session: SessionDep, staff: StaffDep
+):
+    return {"required_skills": request_requirements(session, request_id)}
+
+
+@router.delete("/work-requests/{request_id}/skills/{skill_id}")
+def remove_skill(
+    request_id: UUID, skill_id: UUID, session: SessionDep, staff: StaffDep
+):
+    """Nothing could remove a requirement, so one attached in error stayed for
+    the life of the request, filtering candidates out with no way back."""
+    try:
+        drop_skill_requirement(session, request_id, skill_id)
+    except RequestError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"request_id": request_id, "skill_id": skill_id, "removed": True}
 
 
 @router.post("/work-requests/{request_id}/cancel")

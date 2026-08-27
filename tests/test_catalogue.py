@@ -43,7 +43,7 @@ def greeting_assessment(session, greeting):
 
 
 def test_a_work_request_can_finally_require_a_skill(
-    session, greeting, make_request
+    session, greeting_assessment, make_request
 ):
     """The whole point: require_skill() resolves a code that now exists."""
     request_id = make_request()
@@ -59,6 +59,25 @@ def test_a_work_request_can_finally_require_a_skill(
 def test_requiring_an_undefined_skill_still_refuses(session, make_request):
     with pytest.raises(RequestError, match="unknown skill"):
         require_skill(session, make_request(), "no_such_skill")
+
+
+def test_requiring_a_skill_nobody_can_be_scored_against_is_refused(
+    session, greeting, make_request
+):
+    """It would exclude everybody, and the match list would just be empty.
+
+    A skill with no assessment cannot be scored, so no candidate can be shown
+    to meet any minimum for it.
+    """
+    with pytest.raises(RequestError, match="would exclude everybody"):
+        require_skill(session, make_request(), "retail_greeting")
+
+
+def test_a_minimum_above_the_highest_possible_score_is_refused(
+    session, greeting_assessment, make_request
+):
+    with pytest.raises(RequestError, match="above the highest possible score"):
+        require_skill(session, make_request(), "retail_greeting", min_score=9)
 
 
 def test_a_result_can_be_recorded_against_a_real_assessment(

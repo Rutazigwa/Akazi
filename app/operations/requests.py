@@ -81,15 +81,94 @@ def create_work_request(
     ).scalar_one()
 
 
+# A shift whose specification changes after people have been offered it is a
+# different shift. Requirements are editable while it is still being staffed
+# and fixed once it is not -- the same reasoning that freezes contract terms.
+EDITABLE_STATUSES = ("open", "filling")
+
+
+def _editable_request(session: Session, request_id: UUID) -> str:
+    status = session.execute(
+        text("SELECT status::text FROM work_requests WHERE request_id = :rid"),
+        {"rid": str(request_id)},
+    ).scalar_one_or_none()
+    if status is None:
+        raise RequestError(f"no such work request {request_id}")
+    if status not in EDITABLE_STATUSES:
+        raise RequestError(
+            f"this request is {status}; its skill requirements can no longer "
+            "be changed"
+        )
+    return status
+
+
+def request_requirements(session: Session, request_id: UUID) -> list[dict]:
+    """What this shift asks for, so a coordinator can see why the match list
+    is short before being asked to explain it to an employer."""
+    return [
+        dict(row)
+        for row in session.execute(
+            text(
+                """
+                SELECT s.skill_id, s.skill_code, s.skill_name, rs.min_score,
+                       (SELECT max(a.max_score) FROM assessments a
+                         WHERE a.skill_id = s.skill_id) AS out_of
+                  FROM request_skills rs
+                  JOIN skills s ON s.skill_id = rs.skill_id
+                 WHERE rs.request_id = :rid
+                 ORDER BY s.skill_name
+                """
+            ),
+            {"rid": str(request_id)},
+        ).mappings()
+    ]
+
+
+def drop_skill_requirement(
+    session: Session, request_id: UUID, skill_id: UUID
+) -> None:
+    """Remove a requirement. Nothing could, so one attached in error stayed
+    for the life of the request, silently filtering candidates out."""
+    _editable_request(session, request_id)
+    removed = session.execute(
+        text("DELETE FROM request_skills WHERE request_id = :rid "
+             "AND skill_id = :sid RETURNING skill_id"),
+        {"rid": str(request_id), "sid": str(skill_id)},
+    ).scalar_one_or_none()
+    if removed is None:
+        raise RequestError("that skill is not required on this request")
+
+
 def require_skill(
     session: Session, request_id: UUID, skill_code: str, min_score: int = 3
 ) -> None:
+    _editable_request(session, request_id)
+
     skill_id = session.execute(
         text("SELECT skill_id FROM skills WHERE skill_code = :code"),
         {"code": skill_code},
     ).scalar_one_or_none()
     if skill_id is None:
         raise RequestError(f"unknown skill {skill_code!r}")
+
+    # A minimum above every assessment's maximum excludes everyone, silently.
+    # The match list just comes back empty and nothing says why.
+    ceiling = session.execute(
+        text("SELECT max(max_score) FROM assessments WHERE skill_id = :sid"),
+        {"sid": str(skill_id)},
+    ).scalar_one_or_none()
+    if ceiling is None:
+        raise RequestError(
+            f"{skill_code!r} has no assessment, so no one can be scored "
+            "against it -- requiring it would exclude everybody"
+        )
+    if min_score > ceiling:
+        raise RequestError(
+            f"min_score {min_score} is above the highest possible score for "
+            f"{skill_code!r} ({ceiling}), which would exclude everybody"
+        )
+    if min_score < 0:
+        raise RequestError("min_score cannot be negative")
 
     session.execute(
         text(

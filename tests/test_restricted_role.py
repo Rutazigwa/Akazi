@@ -210,3 +210,55 @@ def test_the_readable_columns_are_only_the_two_that_were_granted(
         )
     ).scalars().all()
     assert readable == ["candidate_id", "erased_at"]
+
+
+def test_the_app_role_can_remove_a_skill_requirement(
+    restricted_session, owner_staff
+):
+    """The first DELETE the application ever performed, and it had no grant.
+
+    Tests run as the owner, who bypasses grants, so the suite was green while
+    the live server returned 500 on the remove button.
+    """
+    from app.operations.catalogue import create_assessment, create_skill
+    from app.operations.requests import (
+        drop_skill_requirement, require_skill,
+    )
+
+    skill_id = create_skill(
+        restricted_session, skill_code=f"skill_{uuid.uuid4().hex[:6]}",
+        skill_name="Removable", category="other",
+    )
+    create_assessment(
+        restricted_session, skill_id=skill_id, title="Observed",
+        method="observed", pass_score=3, max_score=5,
+    )
+    code = restricted_session.execute(
+        text("SELECT skill_code FROM skills WHERE skill_id = :s"),
+        {"s": str(skill_id)},
+    ).scalar_one()
+
+    employer_id = restricted_session.execute(
+        text("INSERT INTO employers (business_name, sector, district, tier) "
+             "VALUES ('Removal Test', 'retail', 'Gasabo', 'active') "
+             "RETURNING employer_id")
+    ).scalar_one()
+    request_id = restricted_session.execute(
+        text("INSERT INTO work_requests (employer_id, title, work_type, "
+             "headcount, starts_on, pay_rwf, pay_unit) "
+             "VALUES (:e, 'Shift', 'shift', 1, CURRENT_DATE, 5000, 'day') "
+             "RETURNING request_id"),
+        {"e": str(employer_id)},
+    ).scalar_one()
+    restricted_session.commit()
+
+    require_skill(restricted_session, request_id, code, 3)
+    restricted_session.commit()
+
+    drop_skill_requirement(restricted_session, request_id, skill_id)
+    restricted_session.commit()
+
+    assert restricted_session.execute(
+        text("SELECT count(*) FROM request_skills WHERE request_id = :r"),
+        {"r": str(request_id)},
+    ).scalar_one() == 0

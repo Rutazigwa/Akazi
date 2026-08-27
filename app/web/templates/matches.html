@@ -11,6 +11,73 @@
 </p>
 
 <div class="card">
+  <h2 style="margin-top:0">Required skills</h2>
+  {% if requirements %}
+  <table>
+    <tr><th>Skill</th><th>Minimum</th><th></th></tr>
+    {% for r in requirements %}
+    <tr>
+      <td>{{ r.skill_name }} <code>{{ r.skill_code }}</code></td>
+      <td>{{ r.min_score }}{% if r.out_of %} / {{ r.out_of }}{% endif %}</td>
+      <td>
+        {% if editable %}
+        <form method="post" class="inline"
+              action="/ui/requests/{{ request_row.request_id }}/skills/{{ r.skill_id }}/remove">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <button type="submit" class="small">Remove</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">
+    Anyone scored below these is in the excluded list with the skill filter as
+    the reason. Someone with no score at all is excluded too — an unassessed
+    candidate cannot be shown to meet a minimum.
+  </p>
+  {% else %}
+  <p class="small muted">
+    None. Every candidate who clears availability, transport and safety is
+    matched.
+  </p>
+  {% endif %}
+
+  {% if editable %}
+    {% if scoreable_skills %}
+    <form method="post" action="/ui/requests/{{ request_row.request_id }}/skills">
+      <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+      <div class="grid">
+        <div>
+          <label for="skill_code">Require</label>
+          <select id="skill_code" name="skill_code">
+            {% for s in scoreable_skills %}
+            <option value="{{ s.skill_code }}">{{ s.skill_name }} ({{ s.skill_code }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="min_score">At least</label>
+          <input id="min_score" name="min_score" type="number" min="0" value="3">
+        </div>
+      </div>
+      <button type="submit">Add requirement</button>
+    </form>
+    {% else %}
+    <p class="small muted">
+      No skill has an assessment yet, so none can be required — requiring one
+      nobody can be scored against would exclude everybody.
+      <a href="/ui/catalogue">Define an assessment</a>.
+    </p>
+    {% endif %}
+  {% else %}
+    <p class="small muted">
+      This request is {{ request_row.status }}; its requirements are fixed.
+    </p>
+  {% endif %}
+</div>
+
+<div class="card">
   <h2 style="margin-top:0">Matched ({{ matches|length }})</h2>
   {% if matches %}
   <table>

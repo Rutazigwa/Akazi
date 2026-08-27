@@ -661,6 +661,43 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Requiring a skill: the two ways to exclude everybody silently
+
+A requirement whose minimum nobody can reach produces an empty match list and
+no explanation. Both routes to it are refused when the requirement is
+attached, not discovered later:
+
+- **A skill with no assessment.** Nobody can be scored against it, so nobody
+  can be shown to meet any minimum. The UI does not offer such skills at all.
+- **A minimum above the highest possible score.** `min_score` 9 against a
+  5-point assessment excludes everyone.
+
+Requirements are editable while a request is `open` or `filling` and fixed
+once it is not: a shift whose specification changes after people were offered
+it is a different shift. Nothing could **remove** a requirement at all before
+-- one attached in error stayed for the life of the request, filtering people
+out with no way back.
+
+The request page lists what the shift asks for. Without that, a coordinator
+reads "excluded by the skill filter" with no way to learn what the filter is,
+which is precisely the question the employer asks next.
+
+### Grants: the parser only caught the verbs it knew about
+
+`test_the_app_role_can_write_everything_the_app_writes` derives its targets
+from the source so a new write cannot arrive without a grant. It scanned for
+`INSERT` and `UPDATE` only. The first `DELETE` the application ever performed
+therefore shipped with no grant, the suite stayed green because tests run as
+the owner, and the live server returned 500 on the remove button.
+
+The parser now covers all three verbs and asserts each one found targets --
+an empty target set passes vacuously, which is the same trap as the route
+walker that examined zero routes.
+
+**Any new write needs a `tests/test_restricted_role.py` case.** That file is
+the only place the application runs as `akazi_app`, and it is the only thing
+that would have caught this before deployment.
+
 ### A raising trigger takes the whole transaction with it
 
 Recording 9 out of 5 is refused by trigger (migration 021), and catching that

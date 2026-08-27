@@ -78,8 +78,11 @@ from app.operations.requests import (
     RequestError,
     cancel_work_request,
     create_work_request,
+    drop_skill_requirement,
     offer_placement,
     open_requests,
+    request_requirements,
+    require_skill,
     respond_to_offer,
 )
 from app.web.deps import (
@@ -798,7 +801,8 @@ def request_matches(
             """
             SELECT wr.request_id, wr.title, wr.headcount, wr.starts_on,
                    wr.shift_start, wr.shift_end, wr.pay_rwf, wr.pay_unit,
-                   wr.transport_covered, e.business_name
+                   wr.transport_covered, wr.status::text AS status,
+                   e.business_name
               FROM work_requests wr
               JOIN employers e ON e.employer_id = wr.employer_id
              WHERE wr.request_id = :rid
@@ -843,6 +847,14 @@ def request_matches(
             }
             for r in result.rejections
         ],
+        # What this shift asks for. Without it a coordinator sees candidates
+        # excluded by "the skill filter" and no way to learn what the filter
+        # is, which is the question an employer asks them next.
+        requirements=request_requirements(session, request_id),
+        scoreable_skills=[
+            s for s in list_skills(session) if s["assessment_count"] > 0
+        ],
+        editable=dict(row).get("status") in ("open", "filling"),
         placements=[dict(p) for p in placements],
         **_flash(request),
     )
@@ -1352,3 +1364,39 @@ def record_result_form(
         target,
         f"{scored['skill_code']} {score}/{scored['max_score']} — {verdict}",
     )
+
+
+@router.post("/requests/{request_id}/skills")
+def require_skill_form(
+    request_id: UUID,
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    skill_code: Annotated[str, Form()],
+    min_score: Annotated[int, Form()] = 3,
+):
+    """Attach a requirement. Nothing in the browser could, so matching
+    filter 1 never engaged for anyone working where the build order puts
+    them."""
+    target = f"/ui/requests/{request_id}"
+    try:
+        with session.begin_nested():
+            require_skill(session, request_id, skill_code, min_score)
+    except RequestError as exc:
+        return _back(target, str(exc), "err")
+    return _back(target, f"Now requires {skill_code} at {min_score} or above")
+
+
+@router.post("/requests/{request_id}/skills/{skill_id}/remove")
+def drop_skill_form(
+    request_id: UUID,
+    skill_id: UUID,
+    session: SessionDep,
+    staff: CsrfStaffDep,
+):
+    target = f"/ui/requests/{request_id}"
+    try:
+        with session.begin_nested():
+            drop_skill_requirement(session, request_id, skill_id)
+    except RequestError as exc:
+        return _back(target, str(exc), "err")
+    return _back(target, "Requirement removed")

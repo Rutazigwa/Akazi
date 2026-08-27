@@ -155,13 +155,17 @@ def _write_targets() -> dict[str, set[str]]:
     import pathlib
     import re
 
-    targets: dict[str, set[str]] = {"INSERT": set(), "UPDATE": set()}
+    targets: dict[str, set[str]] = {
+        "INSERT": set(), "UPDATE": set(), "DELETE": set(),
+    }
     for path in pathlib.Path("app").rglob("*.py"):
         source = path.read_text()
         for table in re.findall(r"INSERT\s+INTO\s+([a-z_]+)", source):
             targets["INSERT"].add(table)
         for table in re.findall(r"UPDATE\s+([a-z_]+)\s+SET", source):
             targets["UPDATE"].add(table)
+        for table in re.findall(r"DELETE\s+FROM\s+([a-z_]+)", source):
+            targets["DELETE"].add(table)
     return targets
 
 
@@ -172,7 +176,11 @@ APP_ROLES = ("app_operations", "app_identity")
 
 def test_the_app_role_can_write_everything_the_app_writes(session):
     targets = _write_targets()
-    assert targets["INSERT"], "found no INSERT targets -- the parser is broken"
+    # Guard the guard. DELETE was absent from this parser entirely, so the
+    # first DELETE the app performed shipped without a grant and the test that
+    # exists to catch that passed -- it was not looking for the verb at all.
+    for verb in ("INSERT", "UPDATE", "DELETE"):
+        assert targets[verb], f"found no {verb} targets -- the parser is broken"
 
     missing = []
     for privilege, tables in targets.items():
