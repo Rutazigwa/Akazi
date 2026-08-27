@@ -661,6 +661,38 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Cover is a different question from matching, and it is the product
+
+The matcher answers "who should do this job" and ranks on prior work with the
+employer, retention, assessment score, then commute. That is right for a shift
+starting next Tuesday.
+
+It is the wrong question at 08:40 when the 08:00 cleaner has not arrived. Then
+the constraint is physical: **can anyone get there while there is still a
+shift left to work**. An excellent candidate 45 minutes away is worth less
+than an adequate one 10 minutes away, and a perfect one already on someone
+else's shift is worth nothing at all. So `app/matching/cover.py` has its own
+filters and its own ranking -- **minutes of the gap covered first**, then who
+the employer already knows.
+
+Four things in it are load-bearing:
+
+- **Mobilisation time is counted, not just travel.** Somebody has to answer
+  the phone, agree, and get out of the door. Treating travel as the whole
+  answer promises arrivals that never happen, and this is the one promise the
+  business is built on.
+- **A shift with under an hour left is not covered at all.** Sending a worker
+  who arrives as it ends costs them a fare and an afternoon and buys the
+  employer nothing. The page says to agree a replacement day instead.
+- **No home location means no promise.** General matching tolerates a missing
+  estimate; a stated arrival time cannot.
+- **Transport and safety filters are not suspended because it is urgent.**
+  Urgency is exactly when a safety rule gets quietly skipped.
+
+Everything else in this system exists to make that moment survivable. If cover
+is ever made faster by weakening one of those four, the thing being sold has
+been weakened instead.
+
 ### A defined response time has to be enforced by something
 
 The blueprint promises a harassment report with a named escalation path and a

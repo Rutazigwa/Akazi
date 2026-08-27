@@ -78,7 +78,7 @@
         {% if g.breached %}<span class="pill bad">overdue</span>
         {% else %}<span class="pill warn">{{ g.due_by.strftime('%d %b %H:%M') }}</span>{% endif %}
       </td>
-      <td><a href="/ui/placements/{{ g.failed_placement_id }}">Cover it</a></td>
+      <td><a href="/ui/placements/{{ g.failed_placement_id }}/cover"><strong>Cover it</strong></a></td>
     </tr>
     {% endfor %}
   </table>

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Cover — {{ failed.business_name }} · Akazi{% endblock %}
+{% block body %}
+<p class="small"><a href="/ui/">← Dashboard</a></p>
+<h1>Cover {{ failed.title }} — {{ failed.business_name }}</h1>
+<p class="muted small">
+  {{ failed.display_name }} did not arrive
+  {% if failed.shift_start %}
+    · shift {{ failed.shift_start.strftime('%H:%M') }}–{{ failed.shift_end.strftime('%H:%M') }}
+  {% endif %}
+  · guarantee invoked {{ failed.invoked_at.strftime('%d %b %H:%M') }}
+</p>
+
+{% if not result.viable %}
+<div class="card urgent">
+  <h2 style="margin-top:0">Do not send anyone</h2>
+  <p class="small">{{ result.note }}.</p>
+  <p class="small muted">
+    Sending a worker who arrives as the shift ends costs them a fare and an
+    afternoon, and buys the employer nothing. Telephone the employer, agree a
+    replacement day, and record the guarantee as honoured that way.
+  </p>
+</div>
+{% else %}
+<div class="card">
+  <h2 style="margin-top:0">Who can still get there ({{ result.options|length }})</h2>
+  <p class="small muted">
+    {{ result.note }}. Ranked by how much of the gap they can actually cover —
+    not by who is the better worker. Someone excellent an hour away covers
+    less than someone adequate ten minutes away.
+  </p>
+  {% if result.options %}
+  <table>
+    <tr><th>Worker</th><th>Arrives</th><th>Covers</th><th>Why</th><th></th></tr>
+    {% for o in result.options %}
+    <tr>
+      <td><a href="/ui/candidates/{{ o.candidate.candidate_id }}">{{ o.candidate.display_name }}</a></td>
+      <td><strong>{{ o.arrives_at.strftime('%H:%M') }}</strong></td>
+      <td class="small">{{ (o.minutes_covered // 60) }}h {{ (o.minutes_covered % 60) }}m</td>
+      <td class="reason">{{ o.reason }}</td>
+      <td>
+        <form method="post" action="/ui/placements/{{ failed.placement_id }}/replace">
+          <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+          <input type="hidden" name="candidate_id" value="{{ o.candidate.candidate_id }}">
+          <input type="hidden" name="match_reason" value="{{ o.reason }}">
+          <button type="submit">Send {{ o.candidate.display_name.split(' ')[0] }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">
+    Whoever is sent is told immediately, and the employer is told who is
+    coming and when. The replacement is recorded against the original
+    placement, which is the evidence the guarantee was honoured.
+  </p>
+  {% else %}
+  <p class="small" style="color:var(--bad)">
+    Nobody can reach this shift in time. Telephone the employer now rather
+    than letting the clock run — the guarantee is a promise to cover or to
+    say we cannot, not a promise to succeed silently.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if result.rejections %}
+<div class="card">
+  <h2 style="margin-top:0">Ruled out ({{ result.rejections|length }})</h2>
+  <table>
+    <tr><th>Worker</th><th>Filter</th><th>Reason</th></tr>
+    {% for r in result.rejections %}
+    <tr>
+      <td>{{ r.candidate.display_name }}</td>
+      <td><span class="pill bad">{{ r.filter_name }}</span></td>
+      <td class="reason">{{ r.reason }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">
+    The transport and safety rules are not suspended because it is urgent —
+    urgency is exactly when they get quietly skipped.
+  </p>
+</div>
+{% endif %}
+{% endblock %}

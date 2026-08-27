@@ -279,3 +279,33 @@ def load_candidates(
 def find_matches(session: Session, request_id: UUID) -> MatchResult:
     context = load_request(session, request_id)
     return match_candidates(context.request, load_candidates(session, context))
+
+
+def find_cover_for(session, placement_id, now=None):
+    """Same-day cover for a placement whose worker did not arrive.
+
+    Loads the same candidate pool the matcher uses -- so consent, age,
+    availability, transport and conflicting commitments are all computed the
+    same way -- and then asks cover's own question of it. The person who did
+    not turn up is excluded: sending them back to the same shift is not cover.
+    """
+    from app.matching.cover import find_cover
+
+    row = session.execute(
+        text(
+            """
+            SELECT p.request_id, p.candidate_id
+              FROM placements p WHERE p.placement_id = :pid
+            """
+        ),
+        {"pid": str(placement_id)},
+    ).mappings().first()
+    if row is None:
+        raise LookupError(f"no such placement {placement_id}")
+
+    context = load_request(session, row["request_id"])
+    pool = [
+        c for c in load_candidates(session, context)
+        if c.candidate_id != row["candidate_id"]
+    ]
+    return find_cover(pool, context.request, now=now)

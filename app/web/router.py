@@ -25,7 +25,7 @@ from sqlalchemy import text
 
 from app.auth import AuthError, login, logout
 from app.deps import SessionDep
-from app.matching.repository import find_matches
+from app.matching.repository import find_cover_for, find_matches
 from app.messaging.inbound import needs_attention
 from app.mfa import MFAError, elevate_session
 from app.operations.attendance import (
@@ -1446,5 +1446,50 @@ def tomorrow_page(
         next_day=(target + timedelta(days=1)).isoformat(),
         shifts=shifts_on(session, target),
         unstaffed=unstaffed_shifts_on(session, target),
+        **_flash(request),
+    )
+
+
+@router.get("/placements/{placement_id}/cover", response_class=HTMLResponse)
+def cover_page(
+    placement_id: UUID, request: Request, session: SessionDep,
+    staff: WebStaffDep,
+):
+    """Who can still get to a shift whose worker did not arrive.
+
+    The guarantee, as a screen. A coordinator opens this with an unhappy
+    employer on the telephone, so it answers the employer's question -- who
+    is coming and when -- rather than the general matching question of who
+    is the better worker.
+    """
+    failed = session.execute(
+        text(
+            """
+            SELECT p.placement_id, c.display_name, wr.title,
+                   wr.shift_start, wr.shift_end, e.business_name,
+                   (SELECT min(a.confirmed_at) FROM attendance a
+                     WHERE a.placement_id = p.placement_id AND NOT a.present)
+                       AS invoked_at
+              FROM placements p
+              JOIN candidates c ON c.candidate_id = p.candidate_id
+              JOIN work_requests wr ON wr.request_id = p.request_id
+              JOIN employers e ON e.employer_id = wr.employer_id
+             WHERE p.placement_id = :pid
+            """
+        ),
+        {"pid": str(placement_id)},
+    ).mappings().first()
+    if failed is None:
+        return _back("/ui/", "No such placement", "err")
+    if failed["invoked_at"] is None:
+        return _back(
+            f"/ui/placements/{placement_id}",
+            "Nobody has been marked absent on this placement", "err",
+        )
+
+    return _render(
+        request, "cover.html", staff, nav="dashboard",
+        failed=dict(failed),
+        result=find_cover_for(session, placement_id),
         **_flash(request),
     )
