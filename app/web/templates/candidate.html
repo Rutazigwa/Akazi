@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ candidate.display_name }} · Akazi{% endblock %}
+{% block body %}
+<h1>{{ candidate.display_name }}</h1>
+<p class="small muted">
+  {{ candidate.district }} · {{ candidate.sector }} ·
+  status <strong>{{ candidate.status }}</strong>
+  {% if candidate.gender %} · {{ candidate.gender }}{% endif %}
+</p>
+
+<div class="grid">
+  <div class="card">
+    <h2 style="margin-top:0">Assessments</h2>
+    {% if results %}
+    <table>
+      <tr><th>Skill</th><th>Assessment</th><th>Score</th><th>When</th><th>By</th></tr>
+      {% for r in results %}
+      <tr>
+        <td><code>{{ r.skill_code }}</code></td>
+        <td>{{ r.title }}</td>
+        <td>
+          {{ r.score }} / {{ r.max_score }}
+          {% if r.passed %}<span class="small" style="color:var(--good)">passed</span>
+          {% else %}<span class="small" style="color:var(--bad)">below {{ r.pass_score }}</span>{% endif %}
+        </td>
+        <td class="small">{{ r.assessed_at.date() if r.assessed_at else '—' }}</td>
+        <td class="small muted">{{ r.assessed_by_name or '—' }}</td>
+      </tr>
+      {% if r.notes %}<tr><td colspan="5" class="reason">{{ r.notes }}</td></tr>{% endif %}
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="small muted">
+      Nothing scored yet. A work request requiring a skill will not match this
+      person until they have a score for it.
+    </p>
+    {% endif %}
+
+    {% if assessments %}
+    <h3>Record a score</h3>
+    <form method="post" action="/ui/candidates/{{ candidate.candidate_id }}/assessments">
+      <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+      <label for="assessment_id">Assessment</label>
+      <select id="assessment_id" name="assessment_id">
+        {% for a in assessments %}
+        <option value="{{ a.assessment_id }}">
+          {{ a.skill_name }} — {{ a.title }} (pass {{ a.pass_score }}/{{ a.max_score }})
+        </option>
+        {% endfor %}
+      </select>
+      <label for="score">Score</label>
+      <input id="score" name="score" type="number" min="0" required>
+      <label for="notes">Notes</label>
+      <input id="notes" name="notes" placeholder="What you observed">
+      <button type="submit">Record</button>
+    </form>
+
+    <h3 class="small">Rubrics</h3>
+    <p class="small muted">
+      Scoring from memory is how two coordinators disagree about the same
+      performance — and this number is both a matching filter and what gets
+      read aloud to an employer asking why this person.
+    </p>
+    {% for a in assessments %}
+      {% if a.rubric %}
+      <p class="small"><strong>{{ a.title }}</strong> ({{ a.pass_score }}/{{ a.max_score }} to pass)<br>
+        <span class="reason">{{ a.rubric }}</span></p>
+      {% endif %}
+    {% endfor %}
+    {% else %}
+    <p class="small muted">
+      No assessments are defined. <a href="/ui/catalogue">Define one</a> before
+      anyone can be scored.
+    </p>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="card">
+      <h2 style="margin-top:0">Availability</h2>
+      {% if availability %}
+      <table>
+        <tr><th>Day</th><th>From</th><th>To</th></tr>
+        {% for a in availability %}
+        <tr><td>{{ a.day }}</td><td>{{ a.start_time }}</td><td>{{ a.end_time }}</td></tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <p class="small muted">
+        None recorded — matching excludes this person, since no shift window
+        can be shown to fall inside their availability.
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">Consent</h2>
+      {% if consent %}
+      <table>
+        <tr><th>Purpose</th><th>Version</th><th>Granted</th><th>When</th></tr>
+        {% for c in consent %}
+        <tr>
+          <td>{{ c.purpose }}</td><td class="small">{{ c.policy_version }}</td>
+          <td>{{ 'yes' if c.granted else 'no' }}</td>
+          <td class="small">{{ c.captured_at.date() }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <p class="small" style="color:var(--bad)">
+        No consent on record. Matching excludes this person entirely.
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">Placements</h2>
+      {% if placements %}
+      <table>
+        <tr><th>Employer</th><th>Role</th><th>Status</th><th></th></tr>
+        {% for p in placements %}
+        <tr>
+          <td>{{ p.business_name }}</td><td>{{ p.title }}</td>
+          <td>{{ p.status }}</td>
+          <td><a class="small" href="/ui/placements/{{ p.placement_id }}">open</a></td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <p class="small muted">No placements yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -648,6 +648,35 @@ The rubric is surfaced to whoever scores. It was stored and displayed nowhere,
 which is how two coordinators score the same performance differently and
 matching then ranks on noise.
 
+
+The browser surface came later than the API and was missing entirely at first:
+no catalogue page, and **no candidate detail page at all**. The build order
+puts coordinators in the admin web app, so scoring -- a weeks 1-6 deliverable
+-- was reachable only by someone willing to call the API by hand.
+
+`/ui/catalogue` and `/ui/candidates/{id}` close that. The candidate page shows
+availability, consent and placement history alongside assessments, and prints
+each rubric beside the scoring form. It deliberately shows **no identity
+data**: legal names, national ID and phone numbers stay behind the audited
+read, so most staff can open the operational record without touching anything
+residency-sensitive. A test asserts that.
+
+### A raising trigger takes the whole transaction with it
+
+Recording 9 out of 5 is refused by trigger (migration 021), and catching that
+exception is not enough -- the transaction is already aborted, so every later
+statement in the same request fails with `InFailedSqlTransaction`. Wrap any
+write that a trigger may reject in `session.begin_nested()`, as the cohort
+capacity path already does.
+
+This hides well: each HTTP request gets its own session, so a live server
+looks fine while the shared-session test client fails. The test client is
+right -- one poisoned statement should not be able to take out the rest of a
+request.
+
+Report what the database said, not a generic failure. "score 9 exceeds the
+maximum of 5" is a correctable mistake; "error" is a support call.
+
 ### readonly means readonly, and it is enforced by HTTP method
 
 `readonly` sat in the `staff_role` enum, was assignable through `POST /staff`,

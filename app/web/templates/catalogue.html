@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Skills &amp; assessments · Akazi{% endblock %}
+{% block body %}
+<h1>Skills &amp; assessments</h1>
+<p class="small muted">
+  What we test, and what counts as a pass. A work request can only require a
+  skill that is defined here, and matching filters on the scores recorded
+  against these assessments.
+</p>
+
+{% if can_author %}
+<div class="grid">
+  <div class="card">
+    <h2 style="margin-top:0">Define a skill</h2>
+    <form method="post" action="/ui/catalogue/skills">
+      <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+      <label for="skill_code">Code</label>
+      <input id="skill_code" name="skill_code" required placeholder="retail_greeting">
+      <p class="small muted">
+        The stable handle. Normalised to lowercase with underscores, and fixed
+        once created — the display name can change later, this cannot.
+      </p>
+      <label for="skill_name">Name</label>
+      <input id="skill_name" name="skill_name" required placeholder="Greeting customers">
+      <label for="category">Category</label>
+      <select id="category" name="category">
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+      <button type="submit">Add skill</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Define an assessment</h2>
+    {% if skills %}
+    <form method="post" action="/ui/catalogue/assessments">
+      <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+      <label for="skill_id">Skill</label>
+      <select id="skill_id" name="skill_id">
+        {% for s in skills %}
+        <option value="{{ s.skill_id }}">{{ s.skill_name }} ({{ s.skill_code }})</option>
+        {% endfor %}
+      </select>
+      <label for="title">Title</label>
+      <input id="title" name="title" required placeholder="Counter greeting, observed">
+      <div class="grid">
+        <div>
+          <label for="method">Method</label>
+          <select id="method" name="method">
+            {% for m in methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+          </select>
+        </div>
+        <div><label for="max_score">Out of</label>
+          <input id="max_score" name="max_score" type="number" min="1" value="5"></div>
+        <div><label for="pass_score">Passes at</label>
+          <input id="pass_score" name="pass_score" type="number" min="0" value="3"></div>
+      </div>
+      <label for="rubric">Rubric</label>
+      <textarea id="rubric" name="rubric" rows="3"
+        placeholder="1 no greeting; 3 greets and offers help; 5 also closes the interaction"></textarea>
+      <p class="small muted">
+        Shown to whoever scores. Two coordinators marking from memory will not
+        agree, and matching then ranks on the difference.
+      </p>
+      <button type="submit">Add assessment</button>
+    </form>
+    {% else %}
+    <p class="small muted">Define a skill first.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">The catalogue</h2>
+  {% if not skills %}
+    <p class="small muted">
+      Nothing defined yet. Until a skill exists, no work request can require
+      one and no candidate can be scored.
+    </p>
+  {% else %}
+  <table>
+    <tr><th>Skill</th><th>Code</th><th>Category</th><th>Assessments</th></tr>
+    {% for s in skills %}
+    <tr>
+      <td>{{ s.skill_name }}</td>
+      <td><code>{{ s.skill_code }}</code></td>
+      <td>{{ s.category }}</td>
+      <td>
+        {% if s.assessment_count == 0 %}
+          <span class="small" style="color:var(--bad)">none — cannot be scored</span>
+        {% else %}{{ s.assessment_count }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+
+{% if assessments %}
+<div class="card">
+  <h2 style="margin-top:0">Assessments</h2>
+  <table>
+    <tr><th>Skill</th><th>Assessment</th><th>Method</th><th>Pass</th>
+        <th>Results</th><th>Rubric</th></tr>
+    {% for a in assessments %}
+    <tr>
+      <td>{{ a.skill_name }}</td>
+      <td>{{ a.title }}</td>
+      <td>{{ a.method }}</td>
+      <td>{{ a.pass_score }} / {{ a.max_score }}</td>
+      <td>
+        {{ a.results_recorded }}
+        {% if not a.bounds_editable %}
+          <span class="small muted" title="Changing the pass mark now would retroactively change who passed">· locked</span>
+        {% endif %}
+      </td>
+      <td class="reason">{{ a.rubric or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">
+    Pass marks lock once a result is recorded against them. A candidate scored
+    3 of 5 against a pass mark of 3 passed; moving the mark afterwards would
+    make them retroactively fail, including for placements already made.
+  </p>
+</div>
+{% endif %}
+{% endblock %}

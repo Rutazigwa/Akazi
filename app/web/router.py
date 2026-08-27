@@ -46,6 +46,16 @@ from app.operations.escalations import (
     response_performance,
 )
 from app.operations.lmis import MIN_CELL, reporting_consent_counts
+from app.operations.catalogue import (
+    CATEGORIES,
+    METHODS,
+    CatalogueError,
+    assessment_for_scoring,
+    create_assessment,
+    create_skill,
+    list_assessments,
+    list_skills,
+)
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
 from app.operations.pay import (
     PayError,
@@ -59,6 +69,7 @@ from app.operations.pay import (
 from app.operations.registry import (
     AvailabilitySlot,
     RegistryError,
+    record_assessment_result,
     register_candidate,
     register_employer,
     set_employer_tier,
@@ -1135,3 +1146,209 @@ def complete(
     ).scalar_one_or_none()
     target = f"/ui/placements/{placement_id}" if placement_id else "/ui/"
     return _back(target, "Check-in recorded")
+
+
+# --- skills, assessments and one candidate ---------------------------------
+#
+# The catalogue had no browser surface at all: skills and assessments could
+# only be defined through the API, and there was no candidate detail page, so
+# a coordinator working where the build order says they work could not score
+# anyone. See CLAUDE.md, "The catalogue".
+
+DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+        "Saturday", "Sunday")
+
+
+@router.get("/catalogue", response_class=HTMLResponse)
+def catalogue_page(request: Request, session: SessionDep, staff: WebStaffDep):
+    return _render(
+        request, "catalogue.html", staff, nav="catalogue",
+        skills=list_skills(session),
+        assessments=list_assessments(session),
+        categories=CATEGORIES,
+        methods=METHODS,
+        # Defining a pass mark decides who is eligible for work. That is
+        # policy, so the forms are not shown to whoever cannot act on them.
+        can_author=staff.role in ADMIN_ROLES,
+        **_flash(request),
+    )
+
+
+@router.post("/catalogue/skills")
+def create_skill_form(
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    skill_code: Annotated[str, Form()],
+    skill_name: Annotated[str, Form()],
+    category: Annotated[str, Form()],
+):
+    if staff.role not in ADMIN_ROLES:
+        return _back("/ui/catalogue", "Only an administrator can define skills", "err")
+    try:
+        with session.begin_nested():
+            create_skill(
+                session, skill_code=skill_code, skill_name=skill_name,
+                category=category,
+            )
+    except CatalogueError as exc:
+        return _back("/ui/catalogue", str(exc), "err")
+    except Exception as exc:
+        detail = str(getattr(exc, "orig", exc)).split("\n")[0].strip()
+        return _back("/ui/catalogue", detail or "Could not define that skill", "err")
+    return _back("/ui/catalogue", f"Skill {skill_code} defined")
+
+
+@router.post("/catalogue/assessments")
+def create_assessment_form(
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    skill_id: Annotated[UUID, Form()],
+    title: Annotated[str, Form()],
+    method: Annotated[str, Form()],
+    pass_score: Annotated[int, Form()],
+    max_score: Annotated[int, Form()] = 5,
+    rubric: Annotated[str, Form()] = "",
+):
+    if staff.role not in ADMIN_ROLES:
+        return _back(
+            "/ui/catalogue", "Only an administrator can define assessments", "err"
+        )
+    try:
+        with session.begin_nested():
+            create_assessment(
+                session, skill_id=skill_id, title=title, method=method,
+                pass_score=pass_score, max_score=max_score, rubric=rubric,
+            )
+    except CatalogueError as exc:
+        return _back("/ui/catalogue", str(exc), "err")
+    except Exception as exc:
+        detail = str(getattr(exc, "orig", exc)).split("\n")[0].strip()
+        return _back("/ui/catalogue", detail or "Could not define that assessment", "err")
+    return _back("/ui/catalogue", f"Assessment “{title}” defined")
+
+
+@router.get("/candidates/{candidate_id}", response_class=HTMLResponse)
+def candidate_page(
+    candidate_id: UUID, request: Request, session: SessionDep,
+    staff: WebStaffDep,
+):
+    """One person: what they can do, when they are free, and what they agreed to.
+
+    No identity data here -- legal names, national ID and phone numbers stay
+    behind the audited read. This page is the operational record, so most
+    staff can open it without reaching anything residency-sensitive.
+    """
+    candidate = session.execute(
+        text(
+            """
+            SELECT candidate_id, display_name, district, sector, gender,
+                   status::text AS status
+              FROM candidates WHERE candidate_id = :cid
+            """
+        ),
+        {"cid": str(candidate_id)},
+    ).mappings().first()
+    if candidate is None:
+        return _back("/ui/candidates", "No such candidate", "err")
+
+    results = session.execute(
+        text(
+            """
+            SELECT r.score, r.notes, r.assessed_at,
+                   a.title, a.max_score, a.pass_score,
+                   s.skill_code, st.full_name AS assessed_by_name,
+                   r.score >= a.pass_score AS passed
+              FROM assessment_results r
+              JOIN assessments a ON a.assessment_id = r.assessment_id
+              JOIN skills s ON s.skill_id = a.skill_id
+              LEFT JOIN staff st ON st.staff_id = r.assessed_by
+             WHERE r.candidate_id = :cid
+             ORDER BY r.assessed_at DESC
+            """
+        ),
+        {"cid": str(candidate_id)},
+    ).mappings()
+
+    availability = [
+        {"day": DAYS[row["day_of_week"]], "start_time": row["start_time"],
+         "end_time": row["end_time"]}
+        for row in session.execute(
+            text(
+                "SELECT day_of_week, start_time, end_time FROM availability "
+                "WHERE candidate_id = :cid ORDER BY day_of_week, start_time"
+            ),
+            {"cid": str(candidate_id)},
+        ).mappings()
+    ]
+
+    consent = session.execute(
+        text(
+            "SELECT purpose, policy_version, granted, captured_at "
+            "FROM v_current_consent WHERE candidate_id = :cid ORDER BY purpose"
+        ),
+        {"cid": str(candidate_id)},
+    ).mappings()
+
+    placements = session.execute(
+        text(
+            """
+            SELECT p.placement_id, p.status::text AS status,
+                   wr.title, e.business_name
+              FROM placements p
+              JOIN work_requests wr ON wr.request_id = p.request_id
+              JOIN employers e ON e.employer_id = wr.employer_id
+             WHERE p.candidate_id = :cid
+             ORDER BY p.offered_at DESC
+            """
+        ),
+        {"cid": str(candidate_id)},
+    ).mappings()
+
+    return _render(
+        request, "candidate.html", staff, nav="candidates",
+        candidate=dict(candidate),
+        results=[dict(r) for r in results],
+        availability=availability,
+        consent=[dict(c) for c in consent],
+        placements=[dict(p) for p in placements],
+        assessments=list_assessments(session),
+        **_flash(request),
+    )
+
+
+@router.post("/candidates/{candidate_id}/assessments")
+def record_result_form(
+    candidate_id: UUID,
+    session: SessionDep,
+    staff: CsrfStaffDep,
+    assessment_id: Annotated[UUID, Form()],
+    score: Annotated[int, Form()],
+    notes: Annotated[str, Form()] = "",
+):
+    target = f"/ui/candidates/{candidate_id}"
+    try:
+        scored = assessment_for_scoring(session, assessment_id)
+    except CatalogueError as exc:
+        return _back(target, str(exc), "err")
+
+    try:
+        # A savepoint, because the out-of-range case is refused by trigger
+        # rather than by this form -- a paper-sheet import is held to the same
+        # rule. A raising trigger aborts the whole transaction, so without
+        # this the refusal would take the rest of the request with it.
+        with session.begin_nested():
+            record_assessment_result(
+                session, candidate_id, assessment_id, score, staff.staff_id,
+                notes or None,
+            )
+    except Exception as exc:
+        # Show what the database said rather than a generic failure: "score 9
+        # exceeds the maximum of 5" is a correctable mistake, "error" is not.
+        detail = str(getattr(exc, "orig", exc)).split("\n")[0].strip()
+        return _back(target, detail or "Could not record that score", "err")
+
+    verdict = "passed" if score >= scored["pass_score"] else "below the pass mark"
+    return _back(
+        target,
+        f"{scored['skill_code']} {score}/{scored['max_score']} — {verdict}",
+    )
