@@ -15,29 +15,7 @@ from sqlalchemy import text
 from app.operations.catalogue import create_assessment, create_skill
 
 
-def csrf(html: str) -> str:
-    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
-    assert match, "no CSRF token in the rendered form"
-    return match.group(1)
-
-
-@pytest.fixture
-def web(api, staff_login):
-    from tests.test_web_ui import totp_now
-
-    api.post(
-        "/ui/login",
-        data={"phone": staff_login["phone"], "password": staff_login["password"]},
-        follow_redirects=True,
-    )
-    page = api.get("/ui/mfa").text
-    api.post(
-        "/ui/mfa",
-        data={"csrf_token": csrf(page),
-              "code": totp_now(staff_login["totp_secret"], 1)},
-        follow_redirects=True,
-    )
-    return api
+from tests.conftest import csrf
 
 
 @pytest.fixture

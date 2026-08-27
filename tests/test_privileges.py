@@ -253,3 +253,72 @@ def test_the_app_role_still_cannot_read_identity_directly(session):
             text("SELECT has_table_privilege(:r, 'candidate_identity', 'SELECT')"),
             {"r": role},
         ).scalar_one() is False
+
+
+def _read_targets() -> set[str]:
+    """Relations the application selects from, read from the source.
+
+    The mirror of _write_targets(). A missing SELECT grant fails the same way
+    a missing INSERT does -- at runtime, on a deployment using the role model,
+    invisibly to a suite connected as the owner.
+    """
+    import pathlib
+    import re
+
+    found: set[str] = set()
+    for path in pathlib.Path("app").rglob("*.py"):
+        source = path.read_text()
+        found.update(re.findall(r"\bFROM\s+([a-z_]+)", source))
+        found.update(re.findall(r"\bJOIN\s+([a-z_]+)", source))
+    return found
+
+
+# The one relation the application reads and the role deliberately cannot.
+# Reads go through read_candidate_identity(), which is SECURITY DEFINER and
+# writes the audit row; only candidate_id and erased_at are granted, and at
+# column level, which a table-level privilege check does not see. If this set
+# ever grows, the growth is the thing to look at.
+READ_EXCEPTIONS = {"candidate_identity"}
+
+
+def test_the_app_role_can_read_everything_the_app_reads(session):
+    targets = _read_targets()
+    assert len(targets) > 20, "found almost no read targets -- parser broken"
+
+    missing = []
+    for relation in sorted(targets):
+        exists = session.execute(
+            text("SELECT to_regclass(:t)"), {"t": f"public.{relation}"}
+        ).scalar_one()
+        if exists is None or relation in READ_EXCEPTIONS:
+            continue
+        granted = any(
+            session.execute(
+                text("SELECT has_table_privilege(:r, :t, 'SELECT')"),
+                {"r": role, "t": f"public.{relation}"},
+            ).scalar_one()
+            for role in APP_ROLES
+        )
+        if not granted:
+            missing.append(relation)
+
+    assert missing == [], (
+        f"the application reads relations the app role cannot: {missing} "
+        "-- add a GRANT in a migration"
+    )
+
+
+def test_identity_is_still_the_only_deliberate_read_exception(session):
+    """Guards the exception list above from quietly absorbing a real bug."""
+    for relation in READ_EXCEPTIONS:
+        granted = any(
+            session.execute(
+                text("SELECT has_table_privilege(:r, :t, 'SELECT')"),
+                {"r": role, "t": f"public.{relation}"},
+            ).scalar_one()
+            for role in APP_ROLES
+        )
+        assert not granted, (
+            f"{relation} is now table-readable; it is on the exception list "
+            "because it must not be"
+        )

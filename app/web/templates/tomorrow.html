@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }} · Akazi{% endblock %}
+{% block body %}
+<h1>{{ heading }}</h1>
+<p class="small muted">
+  What is due to happen on {{ day }}, and what is still unresolved about it.
+  Everything else on the dashboard reports something that has already gone
+  wrong; this is the list you can still act on.
+</p>
+<p class="small">
+  <a href="/ui/tomorrow?day={{ prev_day }}">← {{ prev_day }}</a> ·
+  <a href="/ui/tomorrow">tomorrow</a> ·
+  <a href="/ui/tomorrow?day={{ next_day }}">{{ next_day }} →</a>
+</p>
+
+{% if unstaffed %}
+<div class="card urgent">
+  <h2 style="margin-top:0">Nobody assigned — {{ unstaffed|length }}</h2>
+  <p class="small muted">
+    The guarantee does not cover a slot that was never filled. This is a shift
+    we simply failed to staff, and the employer finds out on the day.
+  </p>
+  <table>
+    <tr><th>Employer</th><th>Shift</th><th>When</th><th class="num">Short by</th><th></th></tr>
+    {% for u in unstaffed %}
+    <tr>
+      <td>{{ u.business_name }}</td>
+      <td>{{ u.title }}</td>
+      <td class="small">
+        {% if u.shift_start %}{{ u.shift_start.strftime('%H:%M') }}–{{ u.shift_end.strftime('%H:%M') }}{% else %}—{% endif %}
+      </td>
+      <td class="num">{{ u.short_by }} of {{ u.headcount }}</td>
+      <td><a class="small" href="/ui/requests/{{ u.request_id }}">find someone</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Shifts ({{ shifts|length }})</h2>
+  {% if shifts %}
+  <table>
+    <tr><th>When</th><th>Worker</th><th>Employer</th><th>Unresolved</th><th></th></tr>
+    {% for s in shifts %}
+    <tr {% if s.flags %}class="urgent"{% endif %}>
+      <td class="small">
+        {% if s.shift_start %}{{ s.shift_start.strftime('%H:%M') }}–{{ s.shift_end.strftime('%H:%M') }}{% else %}—{% endif %}
+      </td>
+      <td><a href="/ui/candidates/{{ s.candidate_id }}">{{ s.display_name }}</a></td>
+      <td>{{ s.business_name }}<br><span class="small muted">{{ s.title }}</span></td>
+      <td class="reason">
+        {% if s.flags %}
+          {% for f in s.flags %}<span class="pill warn">{{ f }}</span>{% if not loop.last %} {% endif %}{% endfor %}
+        {% else %}
+          <span class="pill good">accepted, reminded, worked here before</span>
+        {% endif %}
+      </td>
+      <td><a class="small" href="/ui/placements/{{ s.placement_id }}">open</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">
+    Flags are facts, not a score. Each one names something a coordinator can
+    do today — the same reason matching lists its filters rather than ranking
+    on a number nobody can act on.
+  </p>
+  {% else %}
+  <p class="small muted">Nothing starts on {{ day }}.</p>
+  {% endif %}
+</div>
+{% endblock %}

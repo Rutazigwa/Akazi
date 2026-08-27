@@ -377,6 +377,41 @@ def client(api, staff_login):
     return api
 
 
+def csrf(html: str) -> str:
+    """The CSRF token out of a rendered form.
+
+    Every write in the browser goes through one, so a test that posts without
+    it is testing a path no browser takes.
+    """
+    import re
+
+    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    assert match, "no CSRF token in the rendered form"
+    return match.group(1)
+
+
+@pytest.fixture
+def web(api, staff_login):
+    """A browser session: signed in by cookie, second factor presented.
+
+    Lives here rather than in one test module because three of them need it,
+    and importing a fixture across test files works but reads as a mistake.
+    """
+    api.post(
+        "/ui/login",
+        data={"phone": staff_login["phone"], "password": staff_login["password"]},
+        follow_redirects=True,
+    )
+    page = api.get("/ui/mfa").text
+    api.post(
+        "/ui/mfa",
+        data={"csrf_token": csrf(page),
+              "code": totp_now(staff_login["totp_secret"], 1)},
+        follow_redirects=True,
+    )
+    return api
+
+
 @pytest.fixture(scope="module")
 def restricted_url(scratch_database_module) -> str:
     """A fully migrated database, connected as the unprivileged app role.

@@ -57,6 +57,7 @@ from app.operations.catalogue import (
     list_skills,
 )
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
+from app.operations.readiness import shifts_on, unstaffed_shifts_on
 from app.operations.pay import (
     PayError,
     confirm_with_worker,
@@ -263,6 +264,12 @@ def dashboard(request: Request, session: SessionDep, staff: WebStaffDep):
         guarantees=open_guarantees(session),
         follow_ups=due_follow_ups(session, kigali_today()),
         requests=open_requests(session),
+        # The preventive half. Everything else on this page reports something
+        # that has already gone wrong.
+        tomorrow_flagged=[
+            s for s in shifts_on(session) if s["flags"]
+        ],
+        tomorrow_unstaffed=unstaffed_shifts_on(session),
         scorecard_rows=[
             (label, card[key], target) for key, label, target in SCORECARD_LABELS
         ],
@@ -1400,3 +1407,38 @@ def drop_skill_form(
     except RequestError as exc:
         return _back(target, str(exc), "err")
     return _back(target, "Requirement removed")
+
+
+@router.get("/tomorrow", response_class=HTMLResponse)
+def tomorrow_page(
+    request: Request, session: SessionDep, staff: WebStaffDep,
+    day: str | None = None,
+):
+    """What is due to happen, and what is still unresolved about it.
+
+    The one preventive view. An invoked guarantee costs real money, so the
+    cheapest one is the one that never happens.
+    """
+    today = kigali_today()
+    try:
+        target = date.fromisoformat(day) if day else today + timedelta(days=1)
+    except ValueError:
+        return _back("/ui/tomorrow", f"{day!r} is not a date", "err")
+
+    if target == today:
+        heading = "Today"
+    elif target == today + timedelta(days=1):
+        heading = "Tomorrow"
+    else:
+        heading = target.strftime("%A %d %B")
+
+    return _render(
+        request, "tomorrow.html", staff, nav="tomorrow",
+        heading=heading,
+        day=target.isoformat(),
+        prev_day=(target - timedelta(days=1)).isoformat(),
+        next_day=(target + timedelta(days=1)).isoformat(),
+        shifts=shifts_on(session, target),
+        unstaffed=unstaffed_shifts_on(session, target),
+        **_flash(request),
+    )

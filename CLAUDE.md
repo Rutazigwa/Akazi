@@ -661,6 +661,32 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### The dashboard was entirely reactive
+
+Escalations, overdue pay, a guarantee clock already running -- every section
+reported something that had already gone wrong, and each arrives too late to
+prevent what it describes. The guarantee is priced into the fee, so an
+invocation costs real money and the cheapest one is the one that never
+happens.
+
+`/ui/tomorrow` is the preventive half: shifts due to start, each with what is
+still unresolved about it, plus the case no other view showed at all -- a
+shift with **nobody assigned**. The guarantee does not cover a slot that was
+never filled; that is simply a shift we failed to staff, and the employer
+finds out on the day.
+
+**Flags are facts, not a score.** Not accepted; reminder failed, unsent, or
+sent-but-unconfirmed; no smartphone so WhatsApp cannot reach them; transport
+over 30% of pay; first shift with this employer. Each names something a
+coordinator can do today. "Risk 0.72" would tell them nothing about what to
+do next -- the same reason matching runs sequential filters and surfaces its
+reason rather than ranking on a number.
+
+Note the distinction the flags preserve: a message *accepted by the provider*
+is not a message that *reached the handset*. Those are different facts and
+must not look alike, exactly as a zero transport estimate and no estimate at
+all must not.
+
 ### Requiring a skill: the two ways to exclude everybody silently
 
 A requirement whose minimum nobody can reach produces an empty match list and

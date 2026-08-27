@@ -101,6 +101,33 @@
   </div>
 </div>
 
+{% if tomorrow_unstaffed or tomorrow_flagged %}
+<div class="card {% if tomorrow_unstaffed %}urgent{% endif %}">
+  <h2 style="margin-top:0">Tomorrow needs attention</h2>
+  <p class="small muted">
+    An invoked guarantee costs real money. The cheapest one is the one that
+    never happens.
+  </p>
+  <ul class="small">
+    {% if tomorrow_unstaffed %}
+    <li>
+      <strong>{{ tomorrow_unstaffed|length }}</strong>
+      shift{{ '' if tomorrow_unstaffed|length == 1 else 's' }} with nobody
+      assigned — the guarantee does not cover a slot that was never filled.
+    </li>
+    {% endif %}
+    {% if tomorrow_flagged %}
+    <li>
+      <strong>{{ tomorrow_flagged|length }}</strong>
+      placement{{ '' if tomorrow_flagged|length == 1 else 's' }} with something
+      unresolved: not accepted, not reminded, or no way to reach them.
+    </li>
+    {% endif %}
+  </ul>
+  <p><a href="/ui/tomorrow">Open tomorrow →</a></p>
+</div>
+{% endif %}
+
 {% if overdue_pay %}
 <div class="card urgent">
   <h2 style="margin-top:0">Pay overdue — {{ overdue_pay|length }}</h2>
