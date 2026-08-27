@@ -255,6 +255,27 @@
 </div>
 {% endif %}
 
+{% if fares %}
+<div class="card">
+  <h2 style="margin-top:0">What the journey actually costs</h2>
+  <table>
+    <tr><th>Day</th><th class="num">Reported</th><th class="num">We estimated</th><th>Told to</th></tr>
+    {% for f in fares %}
+    <tr>
+      <td class="small">{{ f.work_date }}</td>
+      <td class="num"><strong>{{ '{:,}'.format(f.reported_rwf) }}</strong>{% if f.reported_min %} <span class="small muted">{{ f.reported_min }} min</span>{% endif %}</td>
+      <td class="num small muted">{% if f.estimated_rwf %}{{ '{:,}'.format(f.estimated_rwf) }}{% else %}—{% endif %}</td>
+      <td class="small muted">{{ f.recorded_by_name or f.source }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">
+    These displace the straight-line estimate for this route, and calibrate it
+    for every other one. A fare nobody reported is a guess wearing a number.
+  </p>
+</div>
+{% endif %}
+
 {% if follow_ups %}
 <div class="card">
   <h2 style="margin-top:0">Check-ins</h2>
@@ -287,6 +308,9 @@
             <option value="transport">Transport</option>
             <option value="hours">Hours</option>
           </select>
+          <input name="transport_rwf" type="number" min="0" step="50"
+                 placeholder="Fare RWF" style="width:9rem"
+                 title="What the day's travel actually cost, both legs">
           <button>Record</button>
         </form>
         {% endif %}

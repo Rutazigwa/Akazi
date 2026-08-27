@@ -661,6 +661,42 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### The fare model was a guess driving two real decisions
+
+`app/matching/transport.py` has described its fare model as a placeholder
+awaiting real receipts since it was written. Nothing collected any --
+`TransportEstimate` even carried `is_estimate`, a flag nothing had ever set to
+false. Two load-bearing things rested on the guess: matching filter 2, which
+refuses a placement when transport exceeds 30% of daily pay, and **net
+earnings after transport**, a headline metric being derived from straight-line
+distance and reported to funders as though measured.
+
+Workers are now asked what it actually cost, at the day-1 check-in where the
+coordinator is already on the telephone. **No model is fitted** -- at pilot
+volume that is fitting noise, and an unexplainable number cannot be defended
+to an employer asking why somebody was not offered their shift. Two rules, in
+order:
+
+1. **A reported fare for this exact route wins.** Even one real fare beats a
+   straight line, and it is the journey the person will actually make.
+2. **Otherwise correct the estimate by the median reported/estimated ratio**
+   across every route -- one number for the model's systematic bias.
+
+Three guards keep it honest. The correction is withheld below ten reports,
+because a correction from three is itself a guess and applying it lends
+authority it has not earned. The factor is clamped to [0.5, 2.5], so a handful
+of odd early reports cannot make every estimate absurd -- this feeds the
+filter that decides who is offered work. And a daily fare over RWF 20,000 is
+refused outright: that is a monthly figure in the wrong box, and the median it
+would poison decides livelihoods.
+
+Medians throughout, never means. One worker stranded in the rain should inform
+the number, not define it.
+
+`is_estimate` and `basis` are shown, because "1,150 RWF (estimated)" and
+"1,400 RWF (reported by 3 workers)" are different claims and only one is a
+fact.
+
 ### Cover is a different question from matching, and it is the product
 
 The matcher answers "who should do this job" and ranks on prior work with the

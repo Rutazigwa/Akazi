@@ -26,7 +26,7 @@ from app.matching.engine import (
     WorkRequest,
     match_candidates,
 )
-from app.matching.transport import estimate_transport
+from app.matching.transport import estimate_transport, resolve_transport
 
 
 @dataclass(frozen=True)
@@ -98,6 +98,9 @@ SELECT c.candidate_id,
        c.home_lat,
        c.home_lng,
        c.max_commute_rwf,
+       obs.reports      AS observed_reports,
+       obs.median_rwf   AS observed_rwf,
+       obs.median_min   AS observed_min,
        c.max_commute_min,
        c.accepts_after_dark,
        COALESCE(consent.granted, false) AS has_placement_consent,
@@ -118,6 +121,12 @@ SELECT c.candidate_id,
       SELECT vc.granted FROM v_current_consent vc
        WHERE vc.candidate_id = c.candidate_id AND vc.purpose = 'placement'
   ) consent ON true
+  -- What this person actually paid to reach this employer before. A real fare
+  -- for this exact route displaces the straight-line guess -- see migration
+  -- 039 -- and it is the route they will actually travel.
+  LEFT JOIN v_transport_observed obs
+         ON obs.candidate_id = c.candidate_id
+        AND obs.employer_id = :employer_id
   LEFT JOIN LATERAL (
       SELECT count(*) AS completed_with_employer
         FROM placements p
@@ -219,6 +228,13 @@ def load_candidates(
     capturing home location at registration matters: without it, the filter that
     prevents most 30-day dropouts cannot run for that person.
     """
+    # One calibration read for the whole batch: it is a property of the fare
+    # model, not of any candidate, and reading it per row would be a query per
+    # person to learn the same number.
+    from app.operations.transport import calibration
+
+    calib = calibration(session)
+
     rows = session.execute(
         text(_CANDIDATE_SQL),
         {
@@ -233,11 +249,18 @@ def load_candidates(
 
     candidates: list[Candidate] = []
     for row in rows:
-        estimate = estimate_transport(
-            float(row["home_lat"]) if row["home_lat"] is not None else None,
-            float(row["home_lng"]) if row["home_lng"] is not None else None,
-            context.site_lat,
-            context.site_lng,
+        estimate = resolve_transport(
+            estimate_transport(
+                float(row["home_lat"]) if row["home_lat"] is not None else None,
+                float(row["home_lng"]) if row["home_lng"] is not None else None,
+                context.site_lat,
+                context.site_lng,
+            ),
+            observed_rwf=row["observed_rwf"],
+            observed_min=row["observed_min"],
+            observed_reports=row["observed_reports"] or 0,
+            calibration_factor=calib["factor"],
+            calibration_reports=calib["reports"],
         )
         candidates.append(
             Candidate(

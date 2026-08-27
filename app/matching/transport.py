@@ -33,15 +33,27 @@ MOTO_SPEED_KMH = 20.0
 WALKABLE_KM = 1.5
 WALKING_SPEED_KMH = 4.5
 
+# Below this many reports, the correction factor is itself a guess. Applying
+# one gives it an authority it has not earned; the uncorrected estimate at
+# least announces what it is.
+MIN_CALIBRATION_REPORTS = 10
+
 
 @dataclass(frozen=True)
 class TransportEstimate:
-    """A round-trip daily estimate. Both legs -- people come home."""
+    """A round-trip daily figure. Both legs -- people come home.
+
+    is_estimate is false when this came from what workers actually reported.
+    The distinction is shown to the coordinator: "1,150 RWF (estimated)" and
+    "1,400 RWF (reported by 3 workers)" are different claims, and only one of
+    them should be read to an employer as a fact.
+    """
 
     daily_rwf: int
     commute_min: int
     straight_line_km: float
     is_estimate: bool = True
+    basis: str = "straight-line estimate, uncalibrated"
 
 
 def haversine_km(
@@ -85,3 +97,58 @@ def estimate_transport(
     # Round to RWF 50: nobody quotes a moto fare to the franc.
     daily = int(round(2 * one_way_rwf / 50) * 50)
     return TransportEstimate(daily, minutes, round(straight_km, 3))
+
+
+def resolve_transport(
+    estimate: TransportEstimate | None,
+    *,
+    observed_rwf: int | None = None,
+    observed_min: int | None = None,
+    observed_reports: int = 0,
+    calibration_factor: float = 1.0,
+    calibration_reports: int = 0,
+) -> TransportEstimate | None:
+    """Prefer what was measured, then a corrected guess, then the raw guess.
+
+    No model is fitted. At pilot volume that would be fitting noise, and an
+    unexplainable number cannot be defended to an employer asking why somebody
+    was not offered their shift.
+
+    Order matters. A real fare for this exact route beats every general
+    correction, because it is the route the person will actually travel.
+    """
+    if observed_reports and observed_rwf is not None:
+        return TransportEstimate(
+            daily_rwf=observed_rwf,
+            commute_min=(
+                observed_min
+                if observed_min is not None
+                else (estimate.commute_min if estimate else 0)
+            ),
+            straight_line_km=estimate.straight_line_km if estimate else 0.0,
+            is_estimate=False,
+            basis=(
+                f"reported by {observed_reports} "
+                f"worker{'s' if observed_reports != 1 else ''} on this route"
+            ),
+        )
+
+    if estimate is None:
+        return None
+
+    # A correction from three reports is barely a correction, and applying one
+    # gives it an authority it has not earned. Say so rather than pretending.
+    if calibration_reports < MIN_CALIBRATION_REPORTS:
+        return estimate
+
+    corrected = int(round(estimate.daily_rwf * calibration_factor))
+    return TransportEstimate(
+        daily_rwf=corrected,
+        commute_min=estimate.commute_min,
+        straight_line_km=estimate.straight_line_km,
+        is_estimate=True,
+        basis=(
+            f"estimated, corrected x{calibration_factor:.2f} from "
+            f"{calibration_reports} reported fares"
+        ),
+    )

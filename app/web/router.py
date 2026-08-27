@@ -59,6 +59,11 @@ from app.operations.catalogue import (
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
 from app.operations.jobs import backup_status, messaging_status
 from app.operations.readiness import shifts_on, unstaffed_shifts_on
+from app.operations.transport import (
+    TransportReportError,
+    record_transport_report,
+    route_history,
+)
 from app.operations.pay import (
     PayError,
     confirm_with_worker,
@@ -967,6 +972,9 @@ def placement_page(
         pay_suggestion=suggest_pay_period(session, placement_id),
         attendance=[dict(a) for a in attendance],
         follow_ups=[dict(f) for f in follow_ups],
+        # What this journey has actually cost, when anyone has said. The
+        # estimate beside it is a straight line; these are receipts.
+        fares=route_history(session, placement_id),
         replacement=dict(replacement) if replacement else None,
         hours_to_fill=(
             float(replacement["hours_to_fill"])
@@ -1154,6 +1162,7 @@ def complete(
     staff: CsrfStaffDep,
     still_working: Annotated[str, Form()],
     issue_flag: Annotated[str, Form()] = "",
+    transport_rwf: Annotated[str, Form()] = "",
 ):
     complete_follow_up(
         session,
@@ -1170,6 +1179,24 @@ def complete(
         {"fid": str(follow_up_id)},
     ).scalar_one_or_none()
     target = f"/ui/placements/{placement_id}" if placement_id else "/ui/"
+
+    # Asked here because the coordinator is already on the telephone and the
+    # journey is fresh. Until this was collected, the fare model was a
+    # straight line, and it decides both who is offered work and the net
+    # earnings figure that goes in front of a funder. See migration 039.
+    if transport_rwf.strip() and placement_id:
+        try:
+            with session.begin_nested():
+                record_transport_report(
+                    session, placement_id=placement_id,
+                    reported_rwf=int(transport_rwf), recorded_by=staff.staff_id,
+                )
+        except (TransportReportError, ValueError) as exc:
+            return _back(
+                target, f"Check-in recorded, but the fare was not: {exc}", "err"
+            )
+        return _back(target, f"Check-in recorded — fare RWF {int(transport_rwf):,}")
+
     return _back(target, "Check-in recorded")
 
 
