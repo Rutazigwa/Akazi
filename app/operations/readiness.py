@@ -23,11 +23,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.clock import kigali_today
+from app.rules import MAX_TRANSPORT_SHARE
 
-# Above this share of daily pay, transport is the blueprint's stated cause of
-# week-two dropout. It is a standing fact about the placement rather than
-# something that went wrong today, so it is worth seeing before the first day.
-TRANSPORT_HEAVY_PCT = 30
+# The matcher's own threshold, not a second copy of it. Flagging at a
+# different number would show a coordinator a warning for a placement the
+# matcher considers fine -- or worse, show nothing for one it would refuse.
+TRANSPORT_HEAVY_PCT = MAX_TRANSPORT_SHARE * 100
 
 
 def shifts_on(session: Session, day: date | None = None) -> list[dict]:

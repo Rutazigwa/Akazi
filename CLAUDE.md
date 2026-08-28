@@ -661,6 +661,30 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### One home for the numbers the business runs on
+
+`app/rules.py` holds the minimum age, the transport threshold, the guarantee
+window and the pilot targets. Each had been written down more than once: the
+transport rule as `0.30` in the matcher and `30` in the Tomorrow view, the
+minimum age as a constant in two modules and two SQL expressions, the
+guarantee window as two independent `INTERVAL` clauses. None of the copies
+disagreed, which is the only reason it had not yet caused a problem.
+
+The failure is quiet. Change the matcher's threshold after a month of real
+fares and the Tomorrow view keeps flagging at the old one -- a coordinator
+sees a warning for a placement the matcher considers fine, or nothing for one
+it would refuse, and nothing errors.
+
+**SQL keeps its own copy and `tests/test_rules.py` asserts they agree**, since
+a view cannot import Python. Same shape as the privilege and data-rights
+audits: derive the check from the source rather than trusting somebody
+remembered. Templates are checked too -- a number typed into a sentence
+explaining a rule is a copy of that rule.
+
+They are constants, not settings. A threshold that can be changed at runtime
+is one that gets changed under pressure, on a Friday, to make a particular
+placement go through.
+
 ### Net earnings after transport must read the receipts
 
 Migration 039 collected what a commute actually costs and fed it into

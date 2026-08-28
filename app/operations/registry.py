@@ -18,6 +18,7 @@ from datetime import date, time
 from uuid import UUID
 
 from app.clock import kigali_today
+from app.rules import MINIMUM_AGE
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -30,7 +31,7 @@ CURRENT_CONSENT_VERSION = "v1.0"
 # candidate_identity so it holds even for writes that bypass this code.
 # Narrow apprenticeship exceptions for 13-15 are not supported: they need an
 # authorised-exception record and a deliberate schema change.
-MINIMUM_AGE = 16
+
 
 
 class RegistryError(Exception):

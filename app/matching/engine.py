@@ -20,6 +20,8 @@ preference.
 
 from __future__ import annotations
 
+from app.rules import MAX_TRANSPORT_SHARE, MINIMUM_AGE
+
 from dataclasses import dataclass, field
 from datetime import date, time
 from typing import Iterable, Sequence
@@ -29,16 +31,6 @@ from uuid import UUID
 # across the year, so a fixed cutoff is honest here in a way it would not be at
 # higher latitudes. Revisit only if the operation expands beyond Rwanda.
 AFTER_DARK = time(18, 0)
-
-# Enforced here, by chk_minimum_age on candidate_identity, and in the
-# registration path. Narrow apprenticeship exceptions for 13-15 are not
-# supported anywhere.
-MINIMUM_AGE = 16
-
-# Transport must stay under this share of daily pay unless the employer covers
-# it. Pilot target is <= 25%; the matcher rejects at 30% to leave headroom
-# between "we would rather not" and "we will not place this".
-MAX_TRANSPORT_SHARE = 0.30
 
 # Standard working days per month, for normalising monthly pay to a daily rate.
 WORKING_DAYS_PER_MONTH = 22
