@@ -18,6 +18,7 @@ from app.messaging.outbox import (
     in_quiet_hours,
     next_send_window,
     queue,
+    record_delivery,
 )
 from app.messaging.providers import FailingProvider, RecordingProvider
 from app.messaging.templates import render, transport_line
@@ -442,3 +443,88 @@ def test_quiet_hours_boundaries():
     assert in_quiet_hours(kigali(7)) is False
     assert in_quiet_hours(kigali(20)) is False
     assert next_send_window(kigali(23)).astimezone(KIGALI).time() == time(7, 0)
+
+
+# --- a delivery receipt has to identify one message ------------------------
+
+MIDDAY = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+    hour=10, minute=0, second=0, microsecond=0
+)
+
+
+def _consented(session, make_candidate, staff_id):
+    candidate_id = make_candidate()
+    session.execute(
+        text("INSERT INTO consent_records (candidate_id, purpose, granted, "
+             "policy_version, captured_via, captured_by) "
+             "VALUES (:c, 'placement', TRUE, 'v1', 'paper', :s)"),
+        {"c": str(candidate_id), "s": str(staff_id)},
+    )
+    return candidate_id
+
+
+def test_two_dispatcher_runs_do_not_reuse_a_reference(session, make_candidate,
+                                                       staff_id):
+    """The recording provider numbered from a counter that restarted with the
+    process, and the cron starts one every five minutes -- so the first
+    message of every run was 'recording:1'. DEPLOYMENT.md recommends running
+    the pilot's first week on this provider, so it was on the path to a real
+    deployment.
+    """
+    for body in ("first", "second"):
+        queue(session, template_key="shift_reminder", body=body,
+              candidate_id=_consented(session, make_candidate, staff_id))
+        dispatch(session, RecordingProvider(), now=MIDDAY)
+
+    refs = session.execute(
+        text("SELECT provider_ref FROM messages WHERE provider_ref IS NOT NULL")
+    ).scalars().all()
+    assert len(refs) == 2
+    assert len(set(refs)) == 2, refs
+
+
+def test_the_database_refuses_a_repeated_reference(session, make_candidate,
+                                                   staff_id):
+    """A real provider that reuses an id is a bug worth failing loudly on:
+    delivery state is what tells a coordinator a worker never heard about
+    their shift."""
+    queue(session, template_key="shift_reminder", body="one",
+          candidate_id=_consented(session, make_candidate, staff_id))
+    dispatch(session, RecordingProvider(), now=MIDDAY)
+    existing = session.execute(
+        text("SELECT provider_ref FROM messages WHERE provider_ref IS NOT NULL")
+    ).scalar_one()
+
+    second = queue(session, template_key="shift_reminder", body="two",
+                   candidate_id=_consented(session, make_candidate, staff_id))
+    with pytest.raises(Exception):
+        session.execute(
+            text("UPDATE messages SET provider_ref = :r WHERE message_id = :m"),
+            {"r": existing, "m": str(second)},
+        )
+        session.flush()
+    session.rollback()
+
+
+def test_a_receipt_marks_exactly_one_message(session, make_candidate,
+                                             staff_id):
+    for body in ("first", "second"):
+        queue(session, template_key="shift_reminder", body=body,
+              candidate_id=_consented(session, make_candidate, staff_id))
+        dispatch(session, RecordingProvider(), now=MIDDAY)
+
+    ref = session.execute(
+        text("SELECT provider_ref FROM messages WHERE body = 'first'")
+    ).scalar_one()
+    assert record_delivery(session, ref, True, None) is True
+
+    delivered = session.execute(
+        text("SELECT body FROM messages WHERE status = 'delivered'")
+    ).scalars().all()
+    assert delivered == ["first"]
+
+
+def test_a_receipt_for_an_unknown_reference_says_so(session):
+    """Silently accepting receipts for messages we have no record of would
+    make the delivery numbers meaningless."""
+    assert record_delivery(session, "recording:nobody", True, None) is False

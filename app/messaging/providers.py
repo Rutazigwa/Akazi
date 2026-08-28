@@ -8,6 +8,8 @@ provider that records instead of sends.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import logging
 from dataclasses import dataclass
 from typing import Protocol
@@ -56,7 +58,11 @@ class RecordingProvider:
             channel, _mask(phone), body.replace("\n", " "),
             "…" if len(body) > 60 else "",
         )
-        return SendResult(ok=True, provider_ref=f"recording:{len(self.sent)}")
+        # A uuid, not a counter. The counter restarted with every process,
+        # and the dispatcher cron starts one every five minutes -- so the
+        # first message of each run was "recording:1", and a single delivery
+        # receipt matched all of them. See migration 049.
+        return SendResult(ok=True, provider_ref=f"recording:{uuid4()}")
 
 
 class FailingProvider:

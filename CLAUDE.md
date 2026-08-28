@@ -1043,6 +1043,25 @@ unreachable in the form is just a way to make the page fail.
 - **Templates state pay net of transport.** Transparent pay before acceptance is
   a legal requirement, and gross pay is not what someone takes home.
 
+
+**A provider reference identifies exactly one message.** The recording
+provider numbered its references from a counter that restarted with the
+process, and the dispatcher cron starts a fresh one every five minutes -- so
+the first message of every run was `recording:1`. `DEPLOYMENT.md` recommends
+running the pilot's first week on that provider, so this was on the path to a
+real deployment, not a test-only curiosity.
+
+One receipt then marked every message sharing the reference as delivered and
+raised `MultipleResultsFound` **after** the update had run: a 500 returned to
+a provider for a receipt that had partly taken effect, which it retries. The
+references are uuids now, a unique index refuses a repeat, and
+`record_delivery` no longer uses a query that only behaves when its data is
+well formed.
+
+Delivery state is not bookkeeping: it is the input to "reminder sent but not
+confirmed delivered" on the Tomorrow page, which is how a coordinator learns a
+worker never heard about their shift.
+
 ### Quiet hours protect workers, not the operation
 
 Nothing goes to a candidate between 21:00 and 07:00 Kigali. That rule exists

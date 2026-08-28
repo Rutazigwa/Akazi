@@ -407,7 +407,12 @@ def record_delivery(
             """
         ),
         {"ref": provider_ref, "delivered": delivered, "error": error},
-    ).scalar_one_or_none()
+    ).first()
+    # .first(), not .scalar_one_or_none(): the latter raises on more than one
+    # row, and it raised *after* the update had already run -- so the provider
+    # got a 500 for a receipt that had partly taken effect, and retried. A
+    # unique index now makes more than one row impossible, but a query that
+    # only behaves when its data is well formed is one bad row from a 500.
     return updated is not None
 
 
