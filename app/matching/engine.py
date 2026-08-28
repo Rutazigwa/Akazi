@@ -346,3 +346,50 @@ def match_candidates(
         matches=[Match(c, _reason(c, request)) for c in survivors],
         rejections=rejections,
     )
+
+
+# What a coordinator can actually read before choosing somebody. Beyond this
+# the list is not a shortlist, it is a directory -- and the ranking has
+# already put the best ones at the top, so the tail is what you scroll past.
+SHORTLIST = 25
+
+# Enough of a reason to recognise it, not enough to hide the count. Seeing
+# three names under "transport viability: 1,390" tells a coordinator what kind
+# of person is being excluded; seeing all 1,390 tells them nothing.
+EXAMPLES_PER_REASON = 3
+
+
+def summarise(result: "MatchResult", shortlist: int = SHORTLIST) -> dict:
+    """A match result as a person can read it.
+
+    The full result is still the truth and the API returns all of it. This is
+    for the screen, where 610 matched names and 1,390 rejections is not a
+    shortlist -- it is a wall that hides the one fact worth knowing.
+
+    Rejections are grouped rather than listed, and that is the important half.
+    "1,390 excluded by transport viability" says the shift is underpaid or
+    badly sited, which is a thing to go and fix. The same 1,390 as names says
+    nothing at all, and takes a megabyte of page to say it.
+    """
+    by_reason: dict[str, list] = {}
+    for rejection in result.rejections:
+        by_reason.setdefault(rejection.filter_name, []).append(rejection)
+
+    grouped = [
+        {
+            "filter_name": name,
+            "count": len(rejections),
+            "examples": rejections[:EXAMPLES_PER_REASON],
+        }
+        for name, rejections in sorted(
+            by_reason.items(), key=lambda kv: -len(kv[1])
+        )
+    ]
+
+    return {
+        "matches": result.matches[:shortlist],
+        "matched_total": len(result.matches),
+        "matches_hidden": max(0, len(result.matches) - shortlist),
+        "rejected_total": len(result.rejections),
+        "rejection_groups": grouped,
+    }

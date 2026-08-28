@@ -25,6 +25,7 @@ from sqlalchemy import text
 
 from app.auth import AuthError, login, logout
 from app.deps import SessionDep
+from app.matching.engine import summarise
 from app.matching.repository import find_cover_for, find_matches
 from app.messaging.inbound import needs_attention
 from app.mfa import MFAError, elevate_session
@@ -855,6 +856,7 @@ def request_matches(
     ).scalar_one()
 
     result = find_matches(session, request_id)
+    shown = summarise(result)
     placements = session.execute(
         text(
             """
@@ -870,6 +872,10 @@ def request_matches(
     return _render(
         request, "matches.html", staff, nav="requests",
         request_row=dict(row),
+        # A shortlist, not a directory. At two thousand candidates this page
+        # rendered 610 matches and 1,390 rejections as individual rows -- two
+        # thousand table rows, and the one fact worth knowing buried in them.
+        # See summarise() in the matching engine.
         matches=[
             {
                 "candidate_id": m.candidate.candidate_id,
@@ -878,16 +884,24 @@ def request_matches(
                 "est_transport_rwf": m.candidate.est_transport_rwf,
                 "est_commute_min": m.candidate.est_commute_min,
             }
-            for m in result.matches
+            for m in shown["matches"]
         ],
-        rejections=[
+        matched_total=shown["matched_total"],
+        matches_hidden=shown["matches_hidden"],
+        rejected_total=shown["rejected_total"],
+        rejection_groups=[
             {
-                "display_name": r.candidate.display_name,
-                "filter": r.filter_name,
-                "reason": r.reason,
+                "filter_name": group["filter_name"],
+                "count": group["count"],
+                "examples": [
+                    {"display_name": r.candidate.display_name,
+                     "reason": r.reason}
+                    for r in group["examples"]
+                ],
             }
-            for r in result.rejections
+            for group in shown["rejection_groups"]
         ],
+
         # What this shift asks for. Without it a coordinator sees candidates
         # excluded by "the skill filter" and no way to learn what the filter
         # is, which is the question an employer asks them next.

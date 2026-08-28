@@ -97,7 +97,14 @@
 </div>
 
 <div class="card">
-  <h2>Matched ({{ matches|length }})</h2>
+  <h2>Matched ({{ matched_total }})</h2>
+  {% if matches_hidden %}
+  <p class="small muted">
+    Showing the best {{ matches|length }}. {{ matches_hidden }} more qualified —
+    they are ranked below these on prior work here, retention, score and
+    commute, so scrolling further finds worse options, not different ones.
+  </p>
+  {% endif %}
   {% if matches %}
   <table>
     <tr><th>Candidate</th><th>Why</th><th class="num">Transport</th><th></th></tr>
@@ -139,18 +146,28 @@
 </div>
 
 <div class="card">
-  <h2>Excluded ({{ rejections|length }})</h2>
-  {% if rejections %}
+  <h2>Excluded ({{ rejected_total }})</h2>
+  {% if rejection_groups %}
   <table>
-    <tr><th>Candidate</th><th>Filter</th><th>Reason</th></tr>
-    {% for r in rejections %}
+    <tr><th>Filter</th><th class="num">How many</th><th>For example</th></tr>
+    {% for group in rejection_groups %}
     <tr>
-      <td>{{ r.display_name }}</td>
-      <td><span class="pill {{ 'bad' if r.filter == 'hard_exclusion' else 'warn' }}">{{ r.filter.replace('_',' ') }}</span></td>
-      <td class="reason">{{ r.reason }}</td>
+      <td><span class="pill {{ 'bad' if group.filter_name == 'hard_exclusion' else 'warn' }}">{{ group.filter_name.replace('_',' ') }}</span></td>
+      <td class="num"><strong>{{ group.count }}</strong></td>
+      <td class="reason">
+        {% for e in group.examples %}
+          {{ e.display_name }} — {{ e.reason }}{% if not loop.last %}<br>{% endif %}
+        {% endfor %}
+      </td>
     </tr>
     {% endfor %}
   </table>
+  <p class="small muted">
+    Grouped, because the count is the finding. Everyone excluded by transport
+    means the shift is underpaid or badly sited, which is something to go and
+    fix — the same people listed one by one says nothing and takes a page to
+    say it.
+  </p>
   {% else %}<p class="muted small">Nobody excluded.</p>{% endif %}
 </div>
 

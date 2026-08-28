@@ -276,3 +276,87 @@ def test_covering_transport_does_not_shorten_the_journey(session=None):
     assert "exceeds the candidate's ceiling of 45 min" in (
         result.rejections[0].reason
     )
+
+
+# --- a shortlist, not a directory ------------------------------------------
+
+def make_result(matched: int, rejections=None):
+    from app.matching.engine import Match, MatchResult
+
+    return MatchResult(
+        matches=[Match(worker(f"W{i}"), "matched on: availability")
+                 for i in range(matched)],
+        rejections=rejections or [],
+    )
+
+
+def test_a_long_match_list_is_cut_to_a_shortlist(session=None):
+    """At two thousand candidates this page rendered 610 matched names. The
+    ranking has already put the best first, so the tail is what you scroll
+    past."""
+    from app.matching.engine import SHORTLIST, summarise
+
+    shown = summarise(make_result(610))
+    assert len(shown["matches"]) == SHORTLIST
+    assert shown["matched_total"] == 610
+    assert shown["matches_hidden"] == 610 - SHORTLIST
+
+
+def test_a_short_list_is_not_cut(session=None):
+    from app.matching.engine import summarise
+
+    shown = summarise(make_result(4))
+    assert len(shown["matches"]) == 4
+    assert shown["matches_hidden"] == 0
+
+
+def test_rejections_are_grouped_by_reason(session=None):
+    """The count is the finding. Everyone excluded by transport means the
+    shift is underpaid or badly sited -- something to go and fix. The same
+    people listed one by one says nothing."""
+    from app.matching.engine import Rejection, summarise
+
+    rejections = (
+        [Rejection(worker(f"T{i}"), "transport_viability", "too far")
+         for i in range(1390)]
+        + [Rejection(worker("H1"), "hard_exclusion", "no consent")]
+    )
+    shown = summarise(make_result(0, rejections))
+
+    assert shown["rejected_total"] == 1391
+    groups = {g["filter_name"]: g for g in shown["rejection_groups"]}
+    assert groups["transport_viability"]["count"] == 1390
+    assert groups["hard_exclusion"]["count"] == 1
+
+
+def test_the_commonest_reason_comes_first(session=None):
+    """It is the one worth acting on."""
+    from app.matching.engine import Rejection, summarise
+
+    rejections = (
+        [Rejection(worker("A"), "safety", "after dark")]
+        + [Rejection(worker(f"T{i}"), "transport_viability", "far")
+           for i in range(9)]
+    )
+    shown = summarise(make_result(0, rejections))
+    assert shown["rejection_groups"][0]["filter_name"] == "transport_viability"
+
+
+def test_each_group_shows_a_few_names(session=None):
+    """Enough to recognise the kind of person being excluded, not enough to
+    bury the count."""
+    from app.matching.engine import EXAMPLES_PER_REASON, Rejection, summarise
+
+    rejections = [Rejection(worker(f"T{i}"), "transport_viability", "far")
+                  for i in range(50)]
+    group = summarise(make_result(0, rejections))["rejection_groups"][0]
+    assert len(group["examples"]) == EXAMPLES_PER_REASON
+
+
+def test_the_full_result_is_untouched(session=None):
+    """The API returns everything; this is only for the screen."""
+    from app.matching.engine import summarise
+
+    result = make_result(610)
+    summarise(result)
+    assert len(result.matches) == 610

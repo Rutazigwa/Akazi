@@ -661,6 +661,36 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Measured at a hundred times the pilot, and what it showed
+
+A registry of 2,000 candidates, 400 requests and 400 placements. Everything on
+the dashboard stayed under 10 ms; the registry queue took 40. One operation
+stood out, and it is the one a coordinator runs most:
+
+| | |
+|---|---|
+| matching one request | **340 ms**, 610 matched, 1,390 rejected |
+
+The latency is acceptable at pilot volume and **should not be optimised yet** --
+the pilot is 30-50 placements. It grows linearly with the registry, so revisit
+it around 10,000 candidates, and the fix then is a geographic pre-filter in
+SQL rather than loading everyone to reject them.
+
+The page, though, was a present-day failure: it rendered **2,000 table rows**.
+The screen now shows the best 25 with a count of the rest -- the ranking has
+already put the best first, so the tail is what you scroll past -- and
+**groups rejections by reason**. That second part is the improvement, not the
+truncation:
+
+> excluded: 1,390 × transport viability
+
+is the finding. It says the shift is underpaid or badly sited, which is
+something to go and fix. The same 1,390 as names says nothing and takes a
+megabyte of page to say it. 2,000 rows became 28.
+
+The API still returns everything. A screen and a data interface want different
+things, and the truncation belongs to the screen.
+
 ### Security headers, and the one the architecture earned
 
 The application sent none. For a system holding national ID numbers, home
