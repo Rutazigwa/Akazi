@@ -661,6 +661,25 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### What a deployer configures and what the app reads were different lists
+
+`INBOUND_WEBHOOK_SECRET` was in `deploy/.env.example` and absent from the
+compose file's environment block. A deployment that configured it correctly
+still lost **every worker reply -- harassment reports included** -- because
+the container never saw the variable. The endpoint returns 503 and the only
+symptom is one the messaging provider observes, not us.
+
+Three files have to agree -- `.env.example`, the compose file, and
+`Settings` -- and none of them imports the others, so
+`tests/test_deployment_config.py` is the only place the disagreement can be
+caught. It also checks that every cron script named in the deployment guide
+exists: a cron line pointing at a missing script fails silently at 4am.
+
+`REQUIRE_MFA_FOR_IDENTITY` is passed through rather than omitted, even though
+the only valid production value is the default. **Silently ignoring a setting
+somebody deliberately set is worse than refusing it**: setting it to false now
+produces the startup error explaining why, which is the message they need.
+
 ### The declaration and the database were free to disagree
 
 `DATA_RESIDENCY` said where the data lived and `DATABASE_URL` said where it

@@ -43,6 +43,15 @@ services:
       DATABASE_URL: postgresql+psycopg://akazi_app:${APP_DB_PASSWORD:?set in .env}@db:5432/${POSTGRES_DB:-akazi}
       DATA_RESIDENCY: ${DATA_RESIDENCY:?state the residency posture explicitly}
       NCSA_CERTIFICATE_REF: ${NCSA_CERTIFICATE_REF:-}
+      # Without this the inbound webhook returns 503 and every worker reply is
+      # rejected -- including harassment reports. It was in .env.example and
+      # not here, so a deployment that configured it correctly still lost the
+      # channel, and the only symptom was a 503 the provider saw.
+      INBOUND_WEBHOOK_SECRET: ${INBOUND_WEBHOOK_SECRET:-}
+      # Passed through rather than left out. Setting it to false is refused at
+      # startup outside local_dev, and a deployer who sets it deserves that
+      # error rather than having their setting quietly ignored.
+      REQUIRE_MFA_FOR_IDENTITY: ${REQUIRE_MFA_FOR_IDENTITY:-true}
       DEBUG: "false"
     depends_on:
       db:
