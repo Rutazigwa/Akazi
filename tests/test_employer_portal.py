@@ -139,19 +139,42 @@ def portal(api, employer_account):
 
 # --- isolation: the tests that matter --------------------------------------
 
-def test_an_employer_cannot_see_another_employers_workers(
-    session, employer_account, rival, make_placement, make_candidate
+def test_an_employer_sees_their_own_workers_and_only_those(
+    session, employer_account, rival, make_request, make_placement,
+    make_candidate
 ):
-    make_placement(request_id=rival["request_id"], candidate_id=make_candidate())
+    """Both halves, deliberately.
+
+    Asserting only that the rival's worker is absent passes if the query is
+    broken and returns nothing for everybody -- which is the same result a
+    security test wants to see and a completely useless system produces. So
+    each employer gets a worker and each must see exactly one.
+    """
+    ours = make_placement(request_id=make_request(),
+                          candidate_id=make_candidate())
+    theirs = make_placement(request_id=rival["request_id"],
+                            candidate_id=make_candidate())
+
     mine = assigned_workers(session, employer_account["employer_id"])
-    assert mine == []
+    assert [w["placement_id"] for w in mine] == [ours]
+
+    yours = assigned_workers(session, rival["employer_id"])
+    assert [w["placement_id"] for w in yours] == [theirs]
 
 
-def test_an_employer_cannot_see_another_employers_requests(
-    session, employer_account, rival
+def test_an_employer_sees_their_own_requests_and_only_those(
+    session, employer_account, rival, make_request
 ):
-    titles = [r["title"] for r in my_requests(session, employer_account["employer_id"])]
-    assert "Rival shift" not in titles
+    """Same reasoning: a query returning nothing would pass the negative
+    half on its own."""
+    make_request()
+
+    mine = my_requests(session, employer_account["employer_id"])
+    assert mine, "the employer cannot see their own request either"
+    assert "Rival shift" not in [r["title"] for r in mine]
+
+    yours = my_requests(session, rival["employer_id"])
+    assert [r["title"] for r in yours] == ["Rival shift"]
 
 
 def test_confirming_attendance_on_someone_elses_placement_is_refused(

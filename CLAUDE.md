@@ -661,6 +661,36 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### A test that asserts nothing is wrong must prove it looked
+
+Several tests here scan the source or the schema and assert the result is
+empty. That shape is only as good as the scan: **a walk that finds nothing
+passes and proves nothing.** It has happened twice -- a route walker that
+examined zero routes because `app.routes` holds router wrappers, and a seeder
+check wired into one of forty-one calls. Both looked exactly like coverage.
+
+`tests/test_audits_are_not_vacuous.py` is the backstop. It re-derives every
+scanned collection and refuses an empty one, and it names the audits that must
+each carry their own guard -- so an audit added later without one fails.
+
+The distinction it does **not** try to detect automatically is intent:
+`assert rejections == []` after creating one candidate is a behaviour test;
+`assert offenders == []` after walking the source is an audit. Only the second
+kind can pass by looking at nothing, and telling them apart is a judgement, so
+the list is written out rather than inferred.
+
+### A negative security assertion needs its positive half
+
+`test_an_employer_cannot_see_another_employers_workers` gave the rival a
+worker and asserted the employer saw none. **It passed when
+`assigned_workers()` returned nothing for everybody** -- a broken query
+produces exactly the result a security test wants to see.
+
+Both employers now get a worker and each must see exactly their own. Verified
+by stubbing the function to return `[]`: the old assertion passed, the new
+pair fails. Any "cannot see X" test needs the matching "can see Y", or it is
+satisfied by a system that shows nobody anything.
+
 ### What a deployer configures and what the app reads were different lists
 
 `INBOUND_WEBHOOK_SECRET` was in `deploy/.env.example` and absent from the
