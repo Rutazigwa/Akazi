@@ -661,6 +661,37 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Which employers are worth having
+
+Every fact needed was already recorded and none of it was grouped by employer:
+retention per worker, guarantee invocations per placement, pay accuracy per
+pay record. The question the operation turns on -- is this client worth having
+-- could not be asked at all.
+
+It is a question **only an operator carrying the guarantee can ask**. The fee
+includes covering a shift when somebody does not arrive, so an employer whose
+shifts repeatedly go uncovered is being subsidised by the ones whose do not. A
+competitor that ends its responsibility at the introduction never pays that
+cost and never needs the number.
+
+**Findings, not a score.** "Employer quality 62/100" cannot be read to anyone
+or acted on. "Three different workers did not arrive here, and two of four had
+left within a month" tells an owner what conversation to have, and gives the
+employer something they can answer. The same reason matching lists filters
+rather than ranking.
+
+Attribution is the delicate part. A no-show is usually the worker's doing and
+says nothing about the employer -- people have bad days. What says something
+is **several different workers** failing to arrive at the same site. So
+distinct people are counted, never events, and one person's bad month cannot
+condemn an employer. Proportions are withheld below four observations: a
+retention rate of two means nothing, and reporting it as though it did is
+worse than silence.
+
+A problem at a cooperative ranks higher, not lower. One cooperative
+relationship carries the placement volume of fifteen SME ones, so there is
+more at stake, not less.
+
 ### The rating only ran one way
 
 The employer rates the worker, and that rating is shown to them. The worker

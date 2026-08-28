@@ -59,6 +59,7 @@ from app.operations.catalogue import (
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
 from app.operations.jobs import backup_status, messaging_status
 from app.operations.readiness import shifts_on, unstaffed_shifts_on
+from app.operations.employer_health import employers_needing_a_conversation
 from app.operations.safety import (
     SafetyReportError,
     employer_safety,
@@ -603,6 +604,10 @@ def employers_page(request: Request, session: SessionDep, staff: WebStaffDep):
     return _render(
         request, "employers.html", staff, nav="employers",
         employers=_employers(session), contacts=grouped,
+        # What the operating record says about each of them. Only employers
+        # with something to answer for; the rest are quietly fine.
+        health={e["employer_id"]: e
+                for e in employers_needing_a_conversation(session)},
         new_account=new_account, **_flash(request),
     )
 

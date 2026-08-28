@@ -44,7 +44,14 @@
     <tr><th>Business</th><th>Sector</th><th>District</th><th>Tier</th><th></th></tr>
     {% for e in employers %}
     <tr>
-      <td>{{ e.business_name }}{% if e.is_cooperative %} <span class="pill good">coop</span>{% endif %}</td>
+      <td>
+        {{ e.business_name }}{% if e.is_cooperative %} <span class="pill good">coop</span>{% endif %}
+        {% if health.get(e.employer_id) %}
+          {% for finding in health[e.employer_id].findings %}
+            <br><span class="small" style="color:var(--bad)">{{ finding }}</span>
+          {% endfor %}
+        {% endif %}
+      </td>
       <td class="small muted">{{ e.sector }}</td>
       <td class="small muted">{{ e.district }}</td>
       <td><span class="pill {{ 'good' if e.tier in ('active','pilot') else 'warn' }}">{{ e.tier }}</span></td>
@@ -94,6 +101,13 @@
     </tr>
     {% endfor %}
   </table>
+  <p class="small muted">
+    Findings come from the operating record — who did not arrive, who was not
+    covered inside 24 hours, who left inside a month, who was not paid on the
+    agreed date, who said they did not feel safe. An employer with nothing
+    listed has nothing against them. There is no score: a number cannot be
+    read to anybody, and a finding can.
+  </p>
   <p class="small muted">A new employer is a prospect. An interview is not a
     relationship — "active employers" only counts the real ones.</p>
 </div>

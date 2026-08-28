@@ -231,6 +231,23 @@ def test_every_template_balances_its_blocks():
     assert unbalanced == [], unbalanced
 
 
+def test_every_template_balances_its_html_tags():
+    """Jinja blocks are not the only thing I have left unclosed.
+
+    An unbalanced table or div renders without error and lays the page out
+    wrongly, which is harder to notice than a template that refuses to load.
+    """
+    unbalanced = []
+    for path in Path("app/web/templates").rglob("*.html"):
+        source = path.read_text()
+        for tag in ("table", "tr", "td", "th", "form", "div", "select"):
+            opens = len(re.findall(r"<" + tag + r"[ >]", source))
+            closes = len(re.findall(r"</" + tag + r">", source))
+            if opens != closes:
+                unbalanced.append(f"{path.name}: <{tag}> {opens} vs {closes}")
+    assert unbalanced == [], unbalanced
+
+
 def test_the_template_check_looks_at_real_templates():
     """Guards the guard: an empty glob would pass silently."""
     assert len(list(Path("app/web/templates").rglob("*.html"))) > 10
