@@ -65,6 +65,7 @@ from app.operations.readiness_queue import (
     registry_summary,
 )
 from app.operations.employer_health import employers_needing_a_conversation
+from app.operations.scorecard import read_scorecard, summary
 from app.operations.safety import (
     SafetyReportError,
     employer_safety,
@@ -255,17 +256,6 @@ def do_logout(
 
 # --- dashboard -------------------------------------------------------------
 
-SCORECARD_LABELS = [
-    ("active_employers", "Active employers", "10"),
-    ("paid_placements", "Placements", "30–50"),
-    ("avg_days_to_fill", "Days to fill", "< 7"),
-    ("retention_30day_pct", "30-day retention %", "≥ 60"),
-    ("avg_transport_pct", "Transport % of pay", "≤ 25"),
-    ("guarantee_filled_24h_pct", "Guarantee filled 24h %", "≥ 90"),
-    ("women_placed_pct", "Women placed %", "≥ 45"),
-    ("pay_accuracy_pct", "Pay accuracy %", "≥ 95"),
-    ("employer_reorder_pct", "Employer reorder %", "≥ 40"),
-]
 
 
 @router.get("", response_class=HTMLResponse)
@@ -297,9 +287,11 @@ def dashboard(request: Request, session: SessionDep, staff: WebStaffDep):
         # worker the reminder never reached.
         messaging=messaging_status(session),
         backups=backup_status(session),
-        scorecard_rows=[
-            (label, card[key], target) for key, label, target in SCORECARD_LABELS
-        ],
+        # Each figure judged against its target rather than printed beside
+        # it. A 0.0 against "target >= 90" and a 100.0 against "target >= 60"
+        # used to look identical on the panel a funder reads.
+        scorecard=read_scorecard(dict(card)),
+        scorecard_summary=summary(read_scorecard(dict(card))),
         **_flash(request),
     )
 

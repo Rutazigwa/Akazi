@@ -90,12 +90,12 @@ def test_nothing_redefines_a_rule_privately(session):
 
 
 def test_the_scorecard_targets_match_the_blueprint(session):
-    """The targets shown beside each figure come from the blueprint. A number
-    edited in the template and nowhere else is how a dashboard quietly starts
-    reporting against the wrong goal."""
-    from app.web.router import SCORECARD_LABELS
+    """The target shown beside each figure comes from app.rules, so a number
+    edited in one place cannot leave the dashboard reporting against a goal
+    the blueprint never set."""
+    from app.operations.scorecard import _SPEC
 
-    shown = {key: target for key, _, target in SCORECARD_LABELS}
+    shown = {key: target for key, _, target, *_ in _SPEC}
     assert shown["avg_transport_pct"] == "≤ 25"
     assert shown["retention_30day_pct"] == "≥ 60"
     assert shown["guarantee_filled_24h_pct"] == "≥ 90"
@@ -109,6 +109,17 @@ def test_the_scorecard_targets_match_the_blueprint(session):
     assert rules.TARGET_WOMEN_PLACED == 0.45
     assert rules.TARGET_PAY_ACCURACY == 0.95
     assert rules.TARGET_REORDER_RATE == 0.40
+
+
+def test_the_shown_target_matches_the_threshold_used(session):
+    """The sentence and the comparison have to be the same number. A card
+    reading "target >= 60" that passes at 50 is worse than no card."""
+    from app.operations.scorecard import _SPEC
+
+    for key, _, target_text, _how, threshold, _dep in _SPEC:
+        digits = "".join(c for c in target_text if c.isdigit() or c == ".")
+        if digits and "–" not in target_text:
+            assert float(digits) == float(threshold), key
 
 
 def test_the_matcher_leaves_headroom_below_the_target(session):

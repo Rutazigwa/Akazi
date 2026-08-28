@@ -11,6 +11,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 
 from app.config import Residency, get_settings
+from app.security_headers import SecurityHeaders
 from app.db import session_scope
 from app.routers import (
     auth,
@@ -42,6 +43,10 @@ from app.web.employer_deps import (
 settings = get_settings()
 
 app = FastAPI(title=settings.app_name, debug=settings.debug)
+
+# Before anything else, so every response carries them -- including error
+# responses and redirects, which are exactly the ones that get forgotten.
+app.add_middleware(SecurityHeaders)
 app.include_router(auth.router)
 app.include_router(identity.router)
 app.include_router(catalogue.router)

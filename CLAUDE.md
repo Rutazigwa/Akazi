@@ -661,6 +661,44 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Security headers, and the one the architecture earned
+
+The application sent none. For a system holding national ID numbers, home
+locations and assessment scores, used on laptops that may be shared, several
+of these are not decoration:
+
+- **`script-src 'none'`.** There is no JavaScript anywhere -- no build step,
+  no framework, not one `<script>` tag. So an injected script does not execute
+  even if it ever gets past Jinja's escaping. Very few applications can say
+  this, and **adding one line of JavaScript costs it for every page**.
+- **`frame-ancestors 'none'`** -- a coordinator's session framed in an
+  attacker's page could be made to click "Send Chantal", or an erasure.
+- **`form-action 'self'`** -- an injected form cannot post a national ID to
+  somebody else's server.
+- **`Referrer-Policy: same-origin`** -- URLs here carry candidate UUIDs, and a
+  Referer sends them to whatever is linked next.
+- **`Cache-Control: no-store`** on everything but `/health`. A cached page of
+  personal data on a shared laptop outlives the session that fetched it.
+
+`style-src` still needs `'unsafe-inline'` for a `<style>` block and 118 style
+attributes. That is a real weakness, though a far smaller one than inline
+script, and moving those into classes would let it be tightened.
+
+### A metric with no data is not a metric that is met
+
+Every scorecard figure rendered identically: a guarantee fill rate of 0.0
+against "target ≥ 90" and a retention rate of 100.0 against "target ≥ 60"
+carried the same visual weight on the panel an owner scans in seconds and a
+funder reads over their shoulder. Comparing them was left to the reader, nine
+times, every time.
+
+Each figure is now judged, against the targets in `app.rules` so the goal
+cannot drift from the blueprint. The third verdict matters most: **no data**.
+Zero placements gives an average time-to-fill of nothing, which is not beating
+the target, and a fill rate over zero invocations is not a failure -- nobody
+has needed covering. An empty pilot reporting nine perfect scores is the most
+flattering possible lie, and the page says so.
+
 ### One home for the numbers the business runs on
 
 `app/rules.py` holds the minimum age, the transport threshold, the guarantee

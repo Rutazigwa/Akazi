@@ -90,12 +90,24 @@
 
 <div class="card">
   <h2 style="margin-top:0">Pilot scorecard</h2>
+  <p class="small muted">
+    {{ scorecard_summary.line }}{% if scorecard_summary.no_data %},
+    {{ scorecard_summary.no_data }} with nothing to measure yet{% endif %}.
+    A figure with no data behind it is not a target met — an empty pilot
+    reporting nine perfect scores is the most flattering possible lie.
+  </p>
   <div class="stats">
-    {% for label, value, target in scorecard_rows %}
+    {% for m in scorecard %}
     <div>
-      <div class="stat">{{ value if value is not none else '—' }}</div>
-      <div class="small muted">{{ label }}</div>
-      {% if target %}<div class="small muted">target {{ target }}</div>{% endif %}
+      <div class="stat {{ 'met' if m.verdict == 'met' else ('missed' if m.verdict == 'missed' else 'nodata') }}">
+        {{ '%g'|format(m.value) if m.value is not none else '—' }}
+      </div>
+      <div class="small muted">{{ m.label }}</div>
+      <div class="small">
+        {% if m.verdict == 'met' %}<span class="pill good">target {{ m.target_text }}</span>
+        {% elif m.verdict == 'missed' %}<span class="pill bad">target {{ m.target_text }}</span>
+        {% else %}<span class="muted">{{ m.note }}</span>{% endif %}
+      </div>
     </div>
     {% endfor %}
   </div>
