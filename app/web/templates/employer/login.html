@@ -1,7 +1,7 @@
 {% extends "employer/base.html" %}
 {% block title %}Sign in · Akazi{% endblock %}
 {% block body %}
-<div class="card" style="max-width:380px;margin:3rem auto;">
+<div class="card signin">
   <h1>Akazi</h1>
   <p class="muted small">Sign in to see your shifts and confirm attendance.</p>
   <form method="post" action="/employer/login">
@@ -9,7 +9,7 @@
     <input id="phone" name="phone" autocomplete="username" required autofocus>
     <label for="password">Password</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
-    <p><button style="width:100%">Sign in</button></p>
+    <p><button class="w-full">Sign in</button></p>
   </form>
 </div>
 {% endblock %}

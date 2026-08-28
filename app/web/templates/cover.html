@@ -13,7 +13,7 @@
 
 {% if not result.viable %}
 <div class="card urgent">
-  <h2 style="margin-top:0">Do not send anyone</h2>
+  <h2>Do not send anyone</h2>
   <p class="small">{{ result.note }}.</p>
   <p class="small muted">
     Sending a worker who arrives as the shift ends costs them a fare and an
@@ -23,7 +23,7 @@
 </div>
 {% else %}
 <div class="card">
-  <h2 style="margin-top:0">Who can still get there ({{ result.options|length }})</h2>
+  <h2>Who can still get there ({{ result.options|length }})</h2>
   <p class="small muted">
     {{ result.note }}. Ranked by how much of the gap they can actually cover —
     not by who is the better worker. Someone excellent an hour away covers
@@ -55,7 +55,7 @@
     placement, which is the evidence the guarantee was honoured.
   </p>
   {% else %}
-  <p class="small" style="color:var(--bad)">
+  <p class="small bad-text">
     Nobody can reach this shift in time. Telephone the employer now rather
     than letting the clock run — the guarantee is a promise to cover or to
     say we cannot, not a promise to succeed silently.
@@ -66,7 +66,7 @@
 
 {% if result.rejections %}
 <div class="card">
-  <h2 style="margin-top:0">Ruled out ({{ result.rejections|length }})</h2>
+  <h2>Ruled out ({{ result.rejections|length }})</h2>
   <table>
     <tr><th>Worker</th><th>Filter</th><th>Reason</th></tr>
     {% for r in result.rejections %}

@@ -15,7 +15,7 @@
 
 {% if unstaffed %}
 <div class="card urgent">
-  <h2 style="margin-top:0">Nobody assigned — {{ unstaffed|length }}</h2>
+  <h2>Nobody assigned — {{ unstaffed|length }}</h2>
   <p class="small muted">
     The guarantee does not cover a slot that was never filled. This is a shift
     we simply failed to staff, and the employer finds out on the day.
@@ -38,7 +38,7 @@
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">Shifts ({{ shifts|length }})</h2>
+  <h2>Shifts ({{ shifts|length }})</h2>
   {% if shifts %}
   <table>
     <tr><th>When</th><th>Worker</th><th>Employer</th><th>Unresolved</th><th></th></tr>

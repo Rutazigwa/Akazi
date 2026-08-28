@@ -4,7 +4,7 @@
 <h1>Reports</h1>
 
 <div class="card">
-  <h2 style="margin-top:0">Escalation response times</h2>
+  <h2>Escalation response times</h2>
   {% if performance %}
   <table>
     <tr><th>Kind</th><th class="num">Raised</th><th class="num">Answered in time</th>
@@ -19,7 +19,7 @@
     </tr>
     {% endfor %}
   </table>
-  <p class="small muted" style="margin-bottom:0">
+  <p class="small muted tight-b">
     A safeguard nobody measures decays into a form. Harassment must be picked up
     within 2 hours, safety within 4.
   </p>
@@ -29,7 +29,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Outcome report for the LMIS</h2>
+  <h2>Outcome report for the LMIS</h2>
   <p class="small muted">
     Grouped and disclosure-controlled: cells under {{ min_cell }} are suppressed,
     and no identifier of any kind is included — not even our own record ids,
@@ -44,19 +44,19 @@
     </div>
     <p><button>Download CSV</button></p>
   </form>
-  <p class="small muted" style="margin-bottom:0">
+  <p class="small muted tight-b">
     The national system needs verified private-sector outcomes and we generate
     exactly that. Supplying it is a contract, and political cover.
   </p>
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Reporting consent</h2>
+  <h2>Reporting consent</h2>
   <p>
     <strong>{{ consent.granted }}</strong> granted ·
     <strong>{{ consent.refused }}</strong> refused
   </p>
-  <p class="small muted" style="margin-bottom:0">
+  <p class="small muted tight-b">
     Tracked separately from placement consent: agreeing to be placed is not
     agreeing to appear in a national dataset. This is the population that could
     lawfully appear in a record-level submission, if one were ever asked for.

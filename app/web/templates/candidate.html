@@ -10,7 +10,7 @@
 
 <div class="grid">
   <div class="card">
-    <h2 style="margin-top:0">Assessments</h2>
+    <h2>Assessments</h2>
     {% if results %}
     <table>
       <tr><th>Skill</th><th>Assessment</th><th>Score</th><th>When</th><th>By</th></tr>
@@ -20,8 +20,8 @@
         <td>{{ r.title }}</td>
         <td>
           {{ r.score }} / {{ r.max_score }}
-          {% if r.passed %}<span class="small" style="color:var(--good)">passed</span>
-          {% else %}<span class="small" style="color:var(--bad)">below {{ r.pass_score }}</span>{% endif %}
+          {% if r.passed %}<span class="small good-text">passed</span>
+          {% else %}<span class="small bad-text">below {{ r.pass_score }}</span>{% endif %}
         </td>
         <td class="small">{{ r.assessed_at.date() if r.assessed_at else '—' }}</td>
         <td class="small muted">{{ r.assessed_by_name or '—' }}</td>
@@ -77,7 +77,7 @@
 
   <div>
     <div class="card">
-      <h2 style="margin-top:0">Availability</h2>
+      <h2>Availability</h2>
       {% if availability %}
       <table>
         <tr><th>Day</th><th>From</th><th>To</th></tr>
@@ -94,7 +94,7 @@
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0">Consent</h2>
+      <h2>Consent</h2>
       {% if consent %}
       <table>
         <tr><th>Purpose</th><th>Version</th><th>Granted</th><th>When</th></tr>
@@ -107,14 +107,14 @@
         {% endfor %}
       </table>
       {% else %}
-      <p class="small" style="color:var(--bad)">
+      <p class="small bad-text">
         No consent on record. Matching excludes this person entirely.
       </p>
       {% endif %}
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0">Placements</h2>
+      <h2>Placements</h2>
       {% if placements %}
       <table>
         <tr><th>Employer</th><th>Role</th><th>Status</th><th></th></tr>

@@ -12,7 +12,7 @@
 
 {% if w.status in ('active','accepted','no_show') %}
 <div class="card">
-  <h2 style="margin-top:0">Did they turn up?</h2>
+  <h2>Did they turn up?</h2>
   <p class="small muted">
     Your confirmation is what the guarantee rests on — if you tell us they did
     not arrive, we cover the slot free of charge, same day.
@@ -44,7 +44,7 @@
 
 {% if w.status in ('active','completed') %}
 <div class="card">
-  <h2 style="margin-top:0">Rate this worker</h2>
+  <h2>Rate this worker</h2>
   {% if w.employer_rating %}
   <p class="small">You rated them <strong>{{ w.employer_rating }}/5</strong>
     on {{ w.rated_at.strftime('%d %b') }}.
@@ -70,7 +70,7 @@
 
 {% if attendance %}
 <div class="card">
-  <h2 style="margin-top:0">Attendance you have confirmed</h2>
+  <h2>Attendance you have confirmed</h2>
   <table>
     <tr><th>Date</th><th>Turned up</th><th class="num">Hours</th><th>Confirmed by</th></tr>
     {% for a in attendance %}

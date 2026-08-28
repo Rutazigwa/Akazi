@@ -6,10 +6,10 @@
 {% if new_account %}
 {# Shown once and never again. The password is not stored in readable form, so
    there is no second chance to retrieve it. #}
-<div class="card" style="border-color:var(--accent)">
-  <h2 style="margin-top:0">{{ new_account.label }}</h2>
-  <p>Temporary password: <code style="font-size:1.1em">{{ new_account.password }}</code></p>
-  <p class="small muted" style="margin-bottom:0">
+<div class="card outline-accent">
+  <h2>{{ new_account.label }}</h2>
+  <p>Temporary password: <code class="lead">{{ new_account.password }}</code></p>
+  <p class="small muted tight-b">
     Shown once — it is stored only as a hash, so it cannot be retrieved again.
     Give it to them directly and they must change it at first sign-in.
   </p>
@@ -17,7 +17,7 @@
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">Add someone</h2>
+  <h2>Add someone</h2>
   <form method="post" action="/ui/staff">
     <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
     <div class="grid">
@@ -51,7 +51,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Everyone ({{ people|length }})</h2>
+  <h2>Everyone ({{ people|length }})</h2>
   <table>
     <tr>
       <th>Name</th><th>Role</th><th>Identity</th><th>2FA</th><th>Status</th><th></th>
@@ -98,7 +98,7 @@
     </tr>
     {% endfor %}
   </table>
-  <p class="small muted" style="margin-bottom:0">
+  <p class="small muted tight-b">
     Changing identity access, resetting a password or a second factor, and
     deactivating all cut the person's live sessions immediately — access that
     waits for a token to expire is not access control.
@@ -106,12 +106,12 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Audit log integrity</h2>
+  <h2>Audit log integrity</h2>
   {% if audit.intact %}
   <p><span class="pill good">intact</span>
     {{ audit.entries }} entries, head
     <code>{{ audit.head_hash[:16] }}…</code></p>
-  <p class="small muted" style="margin-bottom:0">
+  <p class="small muted tight-b">
     Record that head hash somewhere off this server. The chain makes tampering
     detectable; a hash held elsewhere makes it undeniable.
   </p>

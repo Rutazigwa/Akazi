@@ -7,7 +7,7 @@
    than only tracked internally. An operator who keeps this to themselves is
    asking to be taken on trust. #}
 <div class="card">
-  <h2 style="margin-top:0">What we promised you</h2>
+  <h2>What we promised you</h2>
   <div class="stats">
     <div>
       <div class="stat">{{ summary.shifts_covered }}</div>
@@ -36,7 +36,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Workers assigned</h2>
+  <h2>Workers assigned</h2>
   {% if workers %}
   <table>
     <tr><th>Worker</th><th>Shift</th><th>Date</th><th>Status</th><th class="num">Days worked</th><th></th></tr>
@@ -62,7 +62,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Your requests</h2>
+  <h2>Your requests</h2>
   {% if requests %}
   <table>
     <tr><th>Role</th><th>Date</th><th class="num">Pay</th><th class="num">Assigned</th><th>Status</th><th></th></tr>
@@ -76,14 +76,14 @@
       <td>
         <form class="inline" method="post" action="/employer/requests/{{ r.request_id }}/reorder">
           <input type="hidden" name="csrf_token" value="{{ employer.csrf_token }}">
-          <input type="date" name="starts_on" value="{{ today }}" style="width:auto">
+          <input class="w-auto" type="date" name="starts_on" value="{{ today }}">
           <button class="secondary">Order again</button>
         </form>
         {% if r.status in ('open', 'filling', 'filled') %}
         <form class="inline" method="post" action="/employer/requests/{{ r.request_id }}/cancel">
           <input type="hidden" name="csrf_token" value="{{ employer.csrf_token }}">
-          <input name="reason" placeholder="Why?" style="width:auto" required>
-          <button class="secondary" style="border-color:#8f1d1d;color:#8f1d1d">Cancel shift</button>
+          <input class="w-auto" name="reason" placeholder="Why?" required>
+          <button class="secondary outline-bad">Cancel shift</button>
         </form>
         {% endif %}
       </td>

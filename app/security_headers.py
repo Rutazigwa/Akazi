@@ -19,15 +19,17 @@ from starlette.responses import Response
 
 from app.config import Residency, get_settings
 
-# style-src still needs 'unsafe-inline': the pages carry a <style> block and
-# 118 style attributes. That is a real weakness but a much smaller one than
-# inline script would be, and with script-src 'none' there is no obvious path
-# from injected CSS to anything worse than defacement. Moving those attributes
-# into classes would let this be tightened.
+# style-src is 'self' rather than 'unsafe-inline'. The 117 style attributes
+# and two <style> blocks that once required it are gone, replaced by classes
+# in one served stylesheet. That closes the widest remaining hole: with
+# script-src already 'none', injected CSS was the only thing left that could
+# do real work -- selectors can read attribute values and exfiltrate them
+# through background-image requests, which is enough to leak a national ID
+# from a page that renders one.
 CONTENT_SECURITY_POLICY = "; ".join([
     "default-src 'self'",
     "script-src 'none'",
-    "style-src 'self' 'unsafe-inline'",
+    "style-src 'self'",
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",
@@ -45,6 +47,10 @@ CONTENT_SECURITY_POLICY = "; ".join([
 # authenticated view of it, and a cached page of national ID numbers on a
 # shared laptop outlives the session that fetched it.
 CACHEABLE = frozenset({"/health"})
+
+# The stylesheet holds no personal data and every page loads it. Serving it
+# no-store would make every navigation refetch it for nothing.
+CACHEABLE_PREFIXES = ("/static/",)
 
 
 class SecurityHeaders(BaseHTTPMiddleware):
@@ -64,7 +70,11 @@ class SecurityHeaders(BaseHTTPMiddleware):
             "geolocation=(), microphone=(), camera=(), payment=()"
         )
 
-        if request.url.path not in CACHEABLE:
+        cacheable = (
+            request.url.path in CACHEABLE
+            or request.url.path.startswith(CACHEABLE_PREFIXES)
+        )
+        if not cacheable:
             response.headers["Cache-Control"] = "no-store"
 
         # Only where there is TLS to insist on. Sending HSTS from a plain-HTTP

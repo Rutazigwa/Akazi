@@ -127,3 +127,49 @@ def test_no_template_disables_escaping():
         if "|safe" in p.read_text() or "autoescape false" in p.read_text()
     ]
     assert offenders == [], offenders
+
+
+# --- no inline styles, which is what lets style-src be 'self' -------------
+
+def test_styles_come_from_a_served_file(api):
+    """With script-src already 'none', injected CSS was the widest remaining
+    hole: selectors can read attribute values and exfiltrate them through
+    background-image requests, which is enough to leak a national ID from a
+    page that renders one."""
+    assert "style-src 'self'" in headers(
+        api.get("/ui/login"))["content-security-policy"]
+    assert "unsafe-inline" not in headers(
+        api.get("/ui/login"))["content-security-policy"]
+
+
+def test_the_stylesheet_is_served(api):
+    css = api.get("/static/akazi.css")
+    assert css.status_code == 200
+    assert ".card" in css.text
+
+
+def test_the_stylesheet_may_be_cached(api):
+    """Every page loads it and it holds nothing. no-store here would make
+    every navigation refetch it for nothing."""
+    assert headers(api.get("/static/akazi.css")).get("cache-control") != "no-store"
+
+
+def test_no_template_carries_an_inline_style():
+    """One style attribute would violate the policy and the element would
+    silently render unstyled -- no error, just a page that looks wrong."""
+    from pathlib import Path
+
+    offenders = []
+    for path in Path("app/web/templates").rglob("*.html"):
+        source = path.read_text()
+        if 'style="' in source:
+            offenders.append(path.name)
+        if "<style" in source:
+            offenders.append(f"{path.name} (<style> block)")
+    assert offenders == [], offenders
+
+
+def test_the_check_is_looking_at_the_real_templates():
+    from pathlib import Path
+
+    assert len(list(Path("app/web/templates").rglob("*.html"))) > 10

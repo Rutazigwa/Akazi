@@ -12,10 +12,10 @@
 
 {% if safety %}
 <div class="card {% if safety.warn %}urgent{% endif %}">
-  <h2 style="margin-top:0">What their workers say</h2>
+  <h2>What their workers say</h2>
   <p class="small">{{ safety.summary }}.</p>
   {% if safety.warn %}
-  <p class="small" style="color:var(--bad)">
+  <p class="small bad-text">
     Enough women who worked here have said they did not feel safe that this
     should be raised with the owner before another woman is placed. Nobody is
     blocked automatically — that is a commercial decision, and it should be
@@ -30,7 +30,7 @@
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">Required skills</h2>
+  <h2>Required skills</h2>
   {% if requirements %}
   <table>
     <tr><th>Skill</th><th>Minimum</th><th></th></tr>
@@ -97,7 +97,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Matched ({{ matches|length }})</h2>
+  <h2>Matched ({{ matches|length }})</h2>
   {% if matches %}
   <table>
     <tr><th>Candidate</th><th>Why</th><th class="num">Transport</th><th></th></tr>
@@ -139,7 +139,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Excluded ({{ rejections|length }})</h2>
+  <h2>Excluded ({{ rejections|length }})</h2>
   {% if rejections %}
   <table>
     <tr><th>Candidate</th><th>Filter</th><th>Reason</th></tr>
@@ -155,7 +155,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Cancel this shift</h2>
+  <h2>Cancel this shift</h2>
   <p class="small muted">
     Anyone offered or accepted is told it is off, and freed for other work.
     Refused once someone has started — end those placements individually
@@ -163,14 +163,14 @@
   </p>
   <form method="post" action="/ui/requests/{{ request_row.request_id }}/cancel">
     <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
-    <input name="reason" placeholder="Why is it cancelled?" required style="max-width:340px">
+    <input class="mid" name="reason" placeholder="Why is it cancelled?" required>
     <button class="danger">Cancel</button>
   </form>
 </div>
 
 {% if placements %}
 <div class="card">
-  <h2 style="margin-top:0">Already offered</h2>
+  <h2>Already offered</h2>
   <table>
     <tr><th>Candidate</th><th>Status</th><th></th></tr>
     {% for p in placements %}

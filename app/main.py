@@ -6,8 +6,11 @@ no employer surface yet -- see the build order in CLAUDE.md.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.config import Residency, get_settings
@@ -47,6 +50,14 @@ app = FastAPI(title=settings.app_name, debug=settings.debug)
 # Before anything else, so every response carries them -- including error
 # responses and redirects, which are exactly the ones that get forgotten.
 app.add_middleware(SecurityHeaders)
+
+# One stylesheet, served rather than inlined. That is what lets the policy be
+# style-src 'self' instead of 'unsafe-inline' -- see app/security_headers.py.
+app.mount(
+    "/static",
+    StaticFiles(directory=str(Path(__file__).parent / "web" / "static")),
+    name="static",
+)
 app.include_router(auth.router)
 app.include_router(identity.router)
 app.include_router(catalogue.router)

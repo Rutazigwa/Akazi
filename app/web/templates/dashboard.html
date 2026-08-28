@@ -7,7 +7,7 @@
    is money; a harassment report is a person who may still be at the site. #}
 {% if escalations %}
 <div class="card urgent">
-  <h2 style="margin-top:0">Needs a response now — {{ escalations|length }}</h2>
+  <h2>Needs a response now — {{ escalations|length }}</h2>
   <table>
     <tr><th>Kind</th><th>Who</th><th>Where</th><th>Owner</th><th>Respond by</th><th></th></tr>
     {% for e in escalations %}
@@ -35,7 +35,7 @@
     {% endfor %}
   </table>
   {% if escalations|selectattr('detail')|list %}
-  <p class="small muted" style="margin-bottom:0">
+  <p class="small muted tight-b">
     Reported: {% for e in escalations if e.detail %}“{{ e.detail }}”{% if not loop.last %} · {% endif %}{% endfor %}
   </p>
   {% endif %}
@@ -44,7 +44,7 @@
 
 {% if unread_replies %}
 <div class="card">
-  <h2 style="margin-top:0">Replies we could not read ({{ unread_replies|length }})</h2>
+  <h2>Replies we could not read ({{ unread_replies|length }})</h2>
   <table>
     <tr><th>From</th><th>Message</th><th>Received</th></tr>
     {% for m in unread_replies %}
@@ -55,7 +55,7 @@
     </tr>
     {% endfor %}
   </table>
-  <p class="small muted" style="margin-bottom:0">
+  <p class="small muted tight-b">
     Guessing at these would cancel someone's work or miss a report, so they
     wait for a person.
   </p>
@@ -66,7 +66,7 @@
    thing on this screen with a deadline. #}
 {% if guarantees %}
 <div class="card urgent">
-  <h2 style="margin-top:0">Guarantee clock running — {{ guarantees|length }}</h2>
+  <h2>Guarantee clock running — {{ guarantees|length }}</h2>
   <table>
     <tr><th>Employer</th><th>Shift</th><th>Invoked</th><th>Fill by</th><th></th></tr>
     {% for g in guarantees %}
@@ -89,7 +89,7 @@
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">Pilot scorecard</h2>
+  <h2>Pilot scorecard</h2>
   <p class="small muted">
     {{ scorecard_summary.line }}{% if scorecard_summary.no_data %},
     {{ scorecard_summary.no_data }} with nothing to measure yet{% endif %}.
@@ -115,7 +115,7 @@
 
 {% if backups.state not in ('ok', 'unknown') %}
 <div class="card urgent">
-  <h2 style="margin-top:0">Backups are not running</h2>
+  <h2>Backups are not running</h2>
   <p class="small">{{ backups.reason }}.</p>
   <p class="small muted">
     A backup cron that stopped is otherwise discovered at restore time, which
@@ -127,7 +127,7 @@
 
 {% if messaging.state not in ('ok', 'unknown') %}
 <div class="card urgent">
-  <h2 style="margin-top:0">Messages are not going out</h2>
+  <h2>Messages are not going out</h2>
   <p class="small">{{ messaging.reason }}.</p>
   <p class="small muted">
     Nothing reaches a worker while this is true — no shift reminders, no
@@ -139,7 +139,7 @@
 
 {% if unconfirmed %}
 <div class="card {% if unconfirmed|selectattr('urgent')|list %}urgent{% endif %}">
-  <h2 style="margin-top:0">Nobody said whether these happened ({{ unconfirmed|length }})</h2>
+  <h2>Nobody said whether these happened ({{ unconfirmed|length }})</h2>
   <table>
     <tr><th>Worker</th><th>Employer</th><th>Silence</th><th></th></tr>
     {% for u in unconfirmed %}
@@ -164,7 +164,7 @@
 
 {% if tomorrow_unstaffed or tomorrow_flagged %}
 <div class="card {% if tomorrow_unstaffed %}urgent{% endif %}">
-  <h2 style="margin-top:0">Tomorrow needs attention</h2>
+  <h2>Tomorrow needs attention</h2>
   <p class="small muted">
     An invoked guarantee costs real money. The cheapest one is the one that
     never happens.
@@ -191,7 +191,7 @@
 
 {% if overdue_pay %}
 <div class="card urgent">
-  <h2 style="margin-top:0">Pay overdue — {{ overdue_pay|length }}</h2>
+  <h2>Pay overdue — {{ overdue_pay|length }}</h2>
   <table>
     <tr><th>Worker</th><th>Employer</th><th class="num">Net RWF</th><th>Was due</th><th class="num">Days late</th><th></th></tr>
     {% for o in overdue_pay %}
@@ -205,13 +205,13 @@
     </tr>
     {% endfor %}
   </table>
-  <p class="small muted" style="margin-bottom:0">Pay accuracy is a headline
+  <p class="small muted tight-b">Pay accuracy is a headline
     metric — and someone is living on this money.</p>
 </div>
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">Follow-ups due ({{ follow_ups|length }})</h2>
+  <h2>Follow-ups due ({{ follow_ups|length }})</h2>
   {% if follow_ups %}
   <table>
     <tr><th>Checkpoint</th><th>Worker</th><th>Employer</th><th>Due</th><th class="num">Overdue</th><th></th></tr>
@@ -231,7 +231,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Open work requests ({{ requests|length }})</h2>
+  <h2>Open work requests ({{ requests|length }})</h2>
   {% if requests %}
   <table>
     <tr><th>Employer</th><th>Role</th><th>Starts</th><th class="num">Pay</th><th class="num">Filled</th><th></th></tr>

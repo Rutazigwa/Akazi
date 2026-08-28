@@ -680,9 +680,17 @@ of these are not decoration:
 - **`Cache-Control: no-store`** on everything but `/health`. A cached page of
   personal data on a shared laptop outlives the session that fetched it.
 
-`style-src` still needs `'unsafe-inline'` for a `<style>` block and 118 style
-attributes. That is a real weakness, though a far smaller one than inline
-script, and moving those into classes would let it be tightened.
+- **`style-src 'self'`** -- no `'unsafe-inline'`. The 117 style attributes and
+  two `<style>` blocks that once required it are gone, replaced by classes in
+  one served stylesheet. With `script-src` already `'none'`, injected CSS was
+  the widest remaining hole: selectors can read attribute values and
+  exfiltrate them through `background-image` requests, which is enough to leak
+  a national ID from a page that renders one.
+
+Two thirds of those attributes were the same `margin-top:0` on a heading
+inside a card -- a rule, not an attribute, and it is one now. **A style
+attribute added later violates the policy and the element renders unstyled
+with no error**, so a test refuses any template containing one.
 
 ### A metric with no data is not a metric that is met
 

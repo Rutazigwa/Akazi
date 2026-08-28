@@ -5,7 +5,7 @@
 
 {% if queue %}
 <div class="card">
-  <h2 style="margin-top:0">Not working, and fixable ({{ queue|length }})</h2>
+  <h2>Not working, and fixable ({{ queue|length }})</h2>
   <p class="small muted">
     {{ registry.blocked }} of {{ registry.in_registry }} people in the registry
     are stuck behind something we can fix; {{ registry.never_offered }} have
@@ -38,7 +38,7 @@
 
 {% if staff.can_view_identity and staff.mfa_satisfied %}
 <div class="card">
-  <h2 style="margin-top:0">Register</h2>
+  <h2>Register</h2>
   <p class="small muted">
     Coordinator-entered, from WhatsApp or in person. Consent is captured here —
     without it the person is invisible to matching.
@@ -76,16 +76,16 @@
       </div>
     </div>
 
-    <fieldset style="border:1px solid var(--line); border-radius:6px; margin-top:1rem;">
+    <fieldset class="boxed">
       <legend class="small muted">Availability</legend>
-      <p class="small muted" style="margin-top:0">
+      <p class="small muted">
         Without this the candidate is excluded from every shift that has hours —
         the availability filter has nothing to check against.
       </p>
       <div class="grid">
         <div>
           <label for="avail_days">Days</label>
-          <select id="avail_days" name="avail_days" multiple size="7" style="height:auto">
+          <select class="h-auto" id="avail_days" name="avail_days" multiple size="7">
             <option value="0" selected>Monday</option>
             <option value="1" selected>Tuesday</option>
             <option value="2" selected>Wednesday</option>
@@ -119,7 +119,7 @@
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">Registry ({{ candidates|length }})</h2>
+  <h2>Registry ({{ candidates|length }})</h2>
   <table>
     <tr><th>Name</th><th>District</th><th>Status</th><th>Consent</th></tr>
     {% for c in candidates %}

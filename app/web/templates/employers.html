@@ -4,10 +4,10 @@
 <h1>Employers</h1>
 
 {% if new_account %}
-<div class="card" style="border-color:var(--accent)">
-  <h2 style="margin-top:0">{{ new_account.label }}</h2>
-  <p>Temporary password: <code style="font-size:1.1em">{{ new_account.password }}</code></p>
-  <p class="small muted" style="margin-bottom:0">
+<div class="card outline-accent">
+  <h2>{{ new_account.label }}</h2>
+  <p>Temporary password: <code class="lead">{{ new_account.password }}</code></p>
+  <p class="small muted tight-b">
     Shown once. They sign in at <code>/employer/login</code> with their phone
     number to see who is assigned and confirm attendance.
   </p>
@@ -15,7 +15,7 @@
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">Register</h2>
+  <h2>Register</h2>
   <form method="post" action="/ui/employers">
     <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
     <div class="grid">
@@ -39,7 +39,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">All ({{ employers|length }})</h2>
+  <h2>All ({{ employers|length }})</h2>
   <table>
     <tr><th>Business</th><th>Sector</th><th>District</th><th>Tier</th><th></th></tr>
     {% for e in employers %}
@@ -48,7 +48,7 @@
         {{ e.business_name }}{% if e.is_cooperative %} <span class="pill good">coop</span>{% endif %}
         {% if health.get(e.employer_id) %}
           {% for finding in health[e.employer_id].findings %}
-            <br><span class="small" style="color:var(--bad)">{{ finding }}</span>
+            <br><span class="small bad-text">{{ finding }}</span>
           {% endfor %}
         {% endif %}
       </td>
@@ -66,15 +66,15 @@
       </td>
     </tr>
     <tr>
-      <td colspan="5" style="padding-top:0">
+      <td class="pad-none-t" colspan="5">
         {% for c in contacts.get(e.employer_id|string, []) %}
         <span class="small">{{ c.full_name }} · {{ c.phone }}
           {% if c.is_primary %}<span class="pill good">primary</span>{% endif %}
           {% if c.has_login %}<span class="pill good">has login</span>{% endif %}
         </span><br>
         {% endfor %}
-        <details style="margin-top:.4rem">
-          <summary class="small muted" style="cursor:pointer">Add a contact</summary>
+        <details class="nudge">
+          <summary class="small muted clickable">Add a contact</summary>
           <form method="post" action="/ui/employers/{{ e.employer_id }}/contacts">
             <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
             <div class="grid">

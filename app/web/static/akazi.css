@@ -1,0 +1,132 @@
+/* Akazi -- one stylesheet, no build step, no framework.
+ *
+ * Served from a file rather than inlined in a <style> block so the policy can
+ * be `style-src 'self'`. Inline styles were the last thing keeping
+ * 'unsafe-inline' in the Content-Security-Policy, and with script-src already
+ * 'none' they were the widest remaining hole: CSS injection can read attribute
+ * values through selectors and exfiltrate them via background-image requests.
+ *
+ * The employer portal shares this file and differs only in its accent colour,
+ * set by a class on <body>. An employer should never wonder which system they
+ * are in, and one stylesheet with one override is cheaper than two that drift.
+ */
+
+:root {
+  --ink: #16191d; --muted: #5c6570; --line: #dde1e6; --bg: #f7f8fa;
+  --card: #fff; --accent: #1a5f4a; --accent-ink: #fff;
+  --warn: #8a4b00; --warn-bg: #fff4e5;
+  --bad: #8f1d1d;  --bad-bg: #fdecec;
+  --good: #14603f; --good-bg: #e8f5ee;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+       color: var(--ink); background: var(--bg); }
+header { background: var(--ink); color: #fff; padding: .7rem 1rem;
+         display: flex; gap: 1.2rem; align-items: baseline; flex-wrap: wrap; }
+header a { color: #cfd6dd; text-decoration: none; }
+header a:hover, header a.on { color: #fff; text-decoration: underline; }
+header .brand { font-weight: 700; letter-spacing: .02em; color: #fff; }
+header .spacer { margin-left: auto; }
+main { max-width: 1100px; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
+h1 { font-size: 1.35rem; margin: .2rem 0 1rem; }
+h2 { font-size: 1.05rem; margin: 1.6rem 0 .6rem; }
+.card { background: var(--card); border: 1px solid var(--line);
+        border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+table { width: 100%; border-collapse: collapse; font-size: .93rem; }
+th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line);
+         vertical-align: top; }
+th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+     color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: none; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+a { color: var(--accent); }
+form.inline { display: inline; }
+label { display: block; font-size: .82rem; color: var(--muted); margin: .6rem 0 .15rem; }
+input, select { font: inherit; padding: .4rem .5rem; border: 1px solid var(--line);
+                border-radius: 5px; width: 100%; background: #fff; color: var(--ink); }
+.grid { display: grid; gap: .1rem 1rem; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+button { font: inherit; padding: .45rem .9rem; border-radius: 5px; cursor: pointer;
+         border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); }
+button.secondary { background: #fff; color: var(--ink); border-color: var(--line); }
+button.danger { background: var(--bad); border-color: var(--bad); }
+.pill { display: inline-block; padding: .1rem .5rem; border-radius: 99px;
+        font-size: .75rem; font-weight: 600; }
+.pill.good { background: var(--good-bg); color: var(--good); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.bad  { background: var(--bad-bg);  color: var(--bad); }
+.flash { padding: .6rem .8rem; border-radius: 6px; margin-bottom: 1rem; }
+.flash.ok  { background: var(--good-bg); color: var(--good); }
+.flash.err { background: var(--bad-bg);  color: var(--bad); }
+.muted { color: var(--muted); }
+.small { font-size: .85rem; }
+.stat { font-size: 1.5rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stats { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.reason { font-size: .87rem; color: var(--muted); }
+.urgent { border-left: 4px solid var(--bad); }
+.stat.met    { color: var(--good); }
+.stat.missed { color: var(--bad); }
+.stat.nodata { color: var(--muted); }
+code { background: #eef1f4; padding: .1rem .3rem; border-radius: 3px; font-size: .87em; }
+
+/* --- the employer portal ------------------------------------------------
+ *
+ * Same layout, different accent, and a coloured header rather than the near
+ * black one staff see. The distinction is deliberate: an employer must never
+ * wonder which system they are looking at.
+ */
+body.employer {
+  --accent: #1f4e79;
+}
+body.employer header { background: var(--accent); }
+body.employer header a { color: #cfe0ef; }
+
+/* --- utilities -----------------------------------------------------------
+ *
+ * These replace 117 style attributes. Two thirds of those were the same
+ * `margin-top:0` on a heading inside a card, which is a rule rather than an
+ * attribute -- so it is one now.
+ */
+.card > h2:first-child,
+.card > h3:first-child { margin-top: 0; }
+.card > p:last-child   { margin-bottom: 0; }
+
+.w-auto  { width: auto; }
+.w-full  { width: 100%; }
+.w-9rem  { width: 9rem; }
+.narrow  { max-width: 200px; }
+.mid     { max-width: 340px; }
+
+.signin      { max-width: 380px; margin: 3rem auto; }
+.signin-wide { max-width: 420px; margin: 2rem auto; }
+
+.tight      { margin-top: 0; }
+.tight-b    { margin-bottom: 0; }
+.pad-none-t { padding-top: 0; }
+.nudge      { margin-top: .4rem; }
+
+.bad-text   { color: var(--bad); }
+.good-text  { color: var(--good); }
+.dim-header { color: #cfe0ef; }
+.no-2fa     { color: #ffb570; }
+
+.lead       { font-size: 1.1em; }
+.compact    { padding: .2rem .6rem; }
+.clickable  { cursor: pointer; }
+.h-auto     { height: auto; }
+
+button.outline-accent { border-color: var(--accent); }
+button.outline-bad    { border-color: var(--bad); color: var(--bad); }
+
+.boxed { border: 1px solid var(--line); border-radius: 6px; margin-top: 1rem; }
+
+
+/* The agreement as the worker received it: fixed width, wrapped rather than
+   scrolled off, and visibly a document rather than part of the page. */
+.document {
+  white-space: pre-wrap;
+  background: #f4f6f8;
+  padding: .8rem;
+  border-radius: 6px;
+  font-size: .85rem;
+  overflow-x: auto;
+}

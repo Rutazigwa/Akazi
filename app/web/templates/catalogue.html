@@ -11,7 +11,7 @@
 {% if can_author %}
 <div class="grid">
   <div class="card">
-    <h2 style="margin-top:0">Define a skill</h2>
+    <h2>Define a skill</h2>
     <form method="post" action="/ui/catalogue/skills">
       <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
       <label for="skill_code">Code</label>
@@ -31,7 +31,7 @@
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0">Define an assessment</h2>
+    <h2>Define an assessment</h2>
     {% if skills %}
     <form method="post" action="/ui/catalogue/assessments">
       <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
@@ -72,7 +72,7 @@
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">The catalogue</h2>
+  <h2>The catalogue</h2>
   {% if not skills %}
     <p class="small muted">
       Nothing defined yet. Until a skill exists, no work request can require
@@ -88,7 +88,7 @@
       <td>{{ s.category }}</td>
       <td>
         {% if s.assessment_count == 0 %}
-          <span class="small" style="color:var(--bad)">none — cannot be scored</span>
+          <span class="small bad-text">none — cannot be scored</span>
         {% else %}{{ s.assessment_count }}{% endif %}
       </td>
     </tr>
@@ -99,7 +99,7 @@
 
 {% if assessments %}
 <div class="card">
-  <h2 style="margin-top:0">Assessments</h2>
+  <h2>Assessments</h2>
   <table>
     <tr><th>Skill</th><th>Assessment</th><th>Method</th><th>Pass</th>
         <th>Results</th><th>Rubric</th></tr>

@@ -4,7 +4,7 @@
 <h1>Work requests</h1>
 
 <div class="card">
-  <h2 style="margin-top:0">Post a shift</h2>
+  <h2>Post a shift</h2>
   <form method="post" action="/ui/requests">
     <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
     <div class="grid">
@@ -51,7 +51,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Open ({{ requests|length }})</h2>
+  <h2>Open ({{ requests|length }})</h2>
   {% if requests %}
   <table>
     <tr><th>Employer</th><th>Role</th><th>Starts</th><th class="num">Pay</th><th class="num">Filled</th><th></th></tr>
