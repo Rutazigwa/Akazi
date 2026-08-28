@@ -278,3 +278,104 @@ def test_a_covered_no_show_leaves_the_open_list(
     log_attendance(session, pid, TODAY, False, "employer", absence_reason="no-show")
     record_replacement(session, pid, make_candidate(name="Cover"), "matched on: x")
     assert open_guarantees(session) == []
+
+
+# --- correcting a mistake, and the one correction that is not one ----------
+
+def test_a_no_show_recorded_in_error_can_be_corrected(session, make_placement):
+    """It would otherwise stand forever as a guarantee invocation against us,
+    and against the worker's record."""
+    from datetime import date
+
+    placement_id = make_placement()
+    session.execute(
+        text("UPDATE placements SET status = 'active', started_on = CURRENT_DATE "
+             "WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    )
+    log_attendance(session, placement_id, date.today(), present=False,
+                   confirmed_by="employer", absence_reason="did not arrive")
+    assert session.execute(
+        text("SELECT status::text FROM placements WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    ).scalar_one() == "no_show"
+
+    log_attendance(session, placement_id, date.today(), present=True,
+                   confirmed_by="employer")
+    assert session.execute(
+        text("SELECT status::text FROM placements WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    ).scalar_one() == "active"
+    assert session.execute(
+        text("SELECT count(*) FROM v_guarantee_invocations")
+    ).scalar_one() == 0
+
+
+def test_a_covered_absence_cannot_be_quietly_corrected(
+    session, make_placement, make_candidate, make_request
+):
+    """Once somebody has been sent this is not a correction, it is a decision
+    about two people who both turned up -- and one of them travelled because
+    we told them to.
+
+    Reverting quietly erased the invocation, improved the reliability figure,
+    and hid a cost we actually bore. The module docstring forbade it from the
+    start and the code did it anyway.
+    """
+    from datetime import date
+
+    request_id = make_request()
+    placement_id = make_placement(request_id=request_id,
+                                  candidate_id=make_candidate())
+    session.execute(
+        text("UPDATE placements SET status = 'active', started_on = CURRENT_DATE "
+             "WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    )
+    log_attendance(session, placement_id, date.today(), present=False,
+                   confirmed_by="employer", absence_reason="did not arrive")
+    record_replacement(session, placement_id, make_candidate(),
+                       "cover: can be there by 09:10")
+
+    with pytest.raises(AttendanceError, match="already covered"):
+        log_attendance(session, placement_id, date.today(), present=True,
+                       confirmed_by="employer")
+
+    # The record is intact, which is the part my first attempt got wrong: the
+    # insert is an upsert, so a check made after it had already flipped the
+    # attendance row to present before refusing.
+    assert session.execute(
+        text("SELECT present FROM attendance WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    ).scalar_one() is False
+    assert session.execute(
+        text("SELECT count(*) FROM v_guarantee_invocations")
+    ).scalar_one() == 1
+    assert session.execute(
+        text("SELECT count(*) FROM placements WHERE request_id = :r"),
+        {"r": str(request_id)},
+    ).scalar_one() == 2
+
+
+def test_the_refusal_says_what_to_do_instead(session, make_placement,
+                                              make_candidate, make_request):
+    """A refusal a coordinator cannot act on is just an obstacle."""
+    from datetime import date
+
+    placement_id = make_placement(request_id=make_request(),
+                                  candidate_id=make_candidate())
+    session.execute(
+        text("UPDATE placements SET status = 'active', started_on = CURRENT_DATE "
+             "WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    )
+    log_attendance(session, placement_id, date.today(), present=False,
+                   confirmed_by="employer", absence_reason="did not arrive")
+    record_replacement(session, placement_id, make_candidate(), "cover")
+
+    with pytest.raises(AttendanceError) as caught:
+        log_attendance(session, placement_id, date.today(), present=True,
+                       confirmed_by="employer")
+    message = str(caught.value)
+    assert "Cancel or end the cover placement first" in message
+    assert "owed for turning up" in message

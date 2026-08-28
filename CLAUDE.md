@@ -679,6 +679,30 @@ The distinction it does **not** try to detect automatically is intent:
 kind can pass by looking at nothing, and telling them apart is a judgement, so
 the list is written out rather than inferred.
 
+### A correction that erases what it cost us is not a correction
+
+An employer marking somebody absent by mistake must be able to fix it -- a
+no-show recorded in error otherwise stands forever against the worker and
+against our reliability figure. `log_attendance` reverts the placement for
+exactly that reason.
+
+But it reverted **after cover had been dispatched too**, which the module
+docstring forbade from the day it was written. The sequence: absence recorded,
+guarantee invoked, a second worker sent, employer corrects, and the invocation
+vanishes. Two people on the shift, one of whom travelled because we told them
+to, and a record saying the guarantee was never invoked. The reliability
+number improves and a cost we bore disappears.
+
+Once cover exists this is not a correction, it is a decision about two people
+who both turned up. The refusal names the cover placement and says to deal
+with it first, **deciding what they are owed for turning up** -- a refusal a
+coordinator cannot act on is just an obstacle.
+
+**The check has to come before the write.** The insert is an upsert, so my
+first version refused *after* flipping the attendance row to present: the
+operation rejected and the record changed, which is the worst of both. The
+test caught it, and it now asserts the row is untouched.
+
 ### A negative security assertion needs its positive half
 
 `test_an_employer_cannot_see_another_employers_workers` gave the rival a

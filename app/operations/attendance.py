@@ -238,6 +238,35 @@ def log_attendance(
             "conversation and to the transport/pay diagnosis"
         )
 
+    # Checked before the write, not after. The insert below is an upsert, so a
+    # refusal that came later would already have flipped the attendance row to
+    # present -- leaving the operation refused and the record changed, which
+    # is the worst of both. My first version of this did exactly that and the
+    # test caught it.
+    if present and status == "no_show":
+        cover = session.execute(
+            text(
+                "SELECT placement_id FROM placements "
+                "WHERE replaces_placement = :pid LIMIT 1"
+            ),
+            {"pid": str(placement_id)},
+        ).scalar_one_or_none()
+
+        # Once somebody has been sent, this is no longer a correction -- it is
+        # a decision about two people who both turned up, and one of them
+        # travelled because we told them to. Reverting quietly would erase the
+        # invocation from v_guarantee_invocations, improve the reliability
+        # figure, and hide a cost we bore. The module docstring has forbidden
+        # this since it was written; the code did it anyway.
+        if cover is not None:
+            raise AttendanceError(
+                f"this absence was already covered by placement {cover}, and "
+                "that worker was sent. Correcting it here would erase the "
+                "guarantee invocation and leave them unaccounted for. Cancel "
+                "or end the cover placement first, deciding what they are "
+                "owed for turning up."
+            )
+
     row = session.execute(
         text(
             """
