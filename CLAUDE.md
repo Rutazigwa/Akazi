@@ -661,6 +661,40 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Data rights go stale as the schema grows
+
+The subject access export and `erase_candidate_identity` were both written
+when the schema was smaller. Six tables arrived afterwards -- her own
+messages, what she told us about an employer, the concerns raised about her --
+and **neither path was updated**. Nobody noticed, because nothing compared the
+schema against the rights.
+
+`tests/test_data_rights_coverage.py` does that comparison, deriving the table
+list from the database rather than a hand-written one. A new table holding a
+`candidate_id` must appear in the export and in the erasure function, or be
+listed as an exclusion **with a stated reason**. A stale exclusion fails too:
+that is how a table slips out of scope unnoticed.
+
+#### What erasure keeps, and why
+
+The rows survive; only the words go. That is not squeamishness -- it is about
+the other people in the data:
+
+- **A safety report keeps `felt_safe` and the concern.** If erasing one
+  woman's record also erased her warning, the next woman placed there loses
+  the protection, and the employer gains from her leaving. Her words go; the
+  fact that somebody felt unsafe stays.
+- **An escalation keeps its kind, dates and status.** "This employer had a
+  harassment escalation" is what protects the next person.
+- **Consent records are kept entirely.** They are the proof the processing was
+  lawful while it happened; deleting them leaves us unable to show it.
+- **`audit_log` is never rewritten.** Append-only and hash-chained on purpose:
+  its rows are the evidence an auditor asks for.
+
+The export withholds one thing deliberately -- an escalation's internal
+resolution note, which can discuss a named supervisor or colleague whose data
+is not hers to receive. What was reported, when, and what came of it, is.
+
 ### Nobody could ask who we are failing
 
 The matcher explains why each candidate was excluded from each request. It

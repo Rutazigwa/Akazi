@@ -290,4 +290,67 @@ def export_candidate_data(session: Session, candidate_id: UUID) -> dict:
              ORDER BY a.occurred_at
             """
         ),
+        # Everything below arrived after this export was first written, and
+        # was missing from it until somebody compared the two. A subject
+        # access request that returns most of what is held is a failed one.
+        "cohorts": rows(
+            """
+            SELECT co.name, co.starts_on, cm.joined_at, cm.outcome::text AS outcome
+              FROM cohort_members cm
+              JOIN cohorts co ON co.cohort_id = cm.cohort_id
+             WHERE cm.candidate_id = :cid
+             ORDER BY co.starts_on
+            """
+        ),
+        # Her own words, sent to us.
+        "messages_received_from_you": rows(
+            """
+            SELECT received_at, channel::text AS channel, body,
+                   handled_at IS NOT NULL AS handled
+              FROM inbound_messages
+             WHERE candidate_id = :cid
+             ORDER BY received_at
+            """
+        ),
+        "messages_we_sent_you": rows(
+            """
+            SELECT created_at, channel::text AS channel, template_key, body,
+                   status::text AS status, sent_at, delivered_at
+              FROM messages
+             WHERE candidate_id = :cid
+             ORDER BY created_at
+            """
+        ),
+        # What she told us about an employer. Hers, and she is entitled to it.
+        "what_you_told_us_about_employers": rows(
+            """
+            SELECT e.business_name, r.felt_safe, r.would_return, r.concern,
+                   r.note, r.reported_at
+              FROM employer_safety_reports r
+              JOIN employers e ON e.employer_id = r.employer_id
+             WHERE r.candidate_id = :cid
+             ORDER BY r.reported_at
+            """
+        ),
+        "transport_you_reported": rows(
+            """
+            SELECT work_date, reported_rwf, reported_min, source
+              FROM transport_reports
+             WHERE candidate_id = :cid
+             ORDER BY work_date
+            """
+        ),
+        # Raised by or about her. The internal resolution note is deliberately
+        # not returned: it can discuss a third party -- a named supervisor, a
+        # colleague -- whose data is not hers to receive. What was reported,
+        # when, and what came of it, is.
+        "concerns_raised": rows(
+            """
+            SELECT kind::text AS kind, detail, raised_at, respond_by,
+                   acknowledged_at, resolved_at, status::text AS status
+              FROM escalations
+             WHERE candidate_id = :cid
+             ORDER BY raised_at
+            """
+        ),
     }
