@@ -31,6 +31,38 @@ class Residency(str, Enum):
     LOCAL_DEV = "local_dev"
 
 
+# Managed database providers with no Rwandan region. Declaring
+# rwanda_self_hosted while pointing at one of these is not a borderline
+# judgement about where a machine sits -- it is a contradiction, and it is the
+# exact scenario the blueprint names: "do not scaffold onto a managed US/EU
+# database just for now."
+#
+# Hostname suffixes only. Nothing here tries to geolocate an IP address: that
+# needs a database we would have to keep current, it is wrong at the edges,
+# and a check that is wrong at the edges gets switched off. These are
+# unambiguous.
+FOREIGN_MANAGED_HOSTS = (
+    ".rds.amazonaws.com",
+    ".neon.tech",
+    ".supabase.co",
+    ".supabase.com",
+    ".database.azure.com",
+    ".postgres.database.azure.com",
+    ".cloudsql.google.com",
+    ".gcp.cloud",
+    ".render.com",
+    ".herokuapp.com",
+    ".amazonaws.com",
+    ".planetscale.com",
+    ".cockroachlabs.cloud",
+    ".timescaledb.io",
+    ".elephantsql.com",
+    ".digitalocean.com",
+    ".ondigitalocean.app",
+    ".aivencloud.com",
+)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
@@ -82,7 +114,44 @@ class Settings(BaseSettings):
                     f"a remote host ({host!r}). local_dev is for throwaway "
                     f"data on a local database only."
                 )
+            # Nothing below applies: local_dev is throwaway data by
+            # definition, and MFA and debug are a developer's business.
             return self
+
+        # Postures that assert the data is in Rwanda. The declaration and the
+        # connection string were free to disagree, and nothing noticed.
+        foreign = next(
+            (suffix for suffix in FOREIGN_MANAGED_HOSTS
+             if host.endswith(suffix)),
+            None,
+        )
+        if foreign is not None:
+            raise ValueError(
+                f"data_residency={self.data_residency.value} but DATABASE_URL "
+                f"points at {host!r}, a managed provider with no Rwandan "
+                f"region. Law No. 058/2021 requires storage in Rwanda unless "
+                f"an NCSA certificate authorises otherwise -- in which case "
+                f"set data_residency=cross_border_authorised and supply "
+                f"NCSA_CERTIFICATE_REF."
+            )
+
+        # A deployment holding national ID numbers must not have the second
+        # factor switched off. This is exactly the setting that gets changed
+        # under pressure, on a Friday, to get somebody logged in.
+        if not self.require_mfa_for_identity:
+            raise ValueError(
+                "require_mfa_for_identity=false is only for local_dev. A "
+                "password alone would reach national ID numbers, and one "
+                "leaked coordinator login would be enough."
+            )
+
+        # Debug tracebacks on a page a coordinator can reach put database
+        # structure and query fragments in front of whoever provoked the error.
+        if self.debug:
+            raise ValueError(
+                "debug=true is only for local_dev: error pages would show "
+                "query fragments and schema to whoever triggered them."
+            )
 
         return self
 

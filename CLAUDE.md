@@ -661,6 +661,32 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### The declaration and the database were free to disagree
+
+`DATA_RESIDENCY` said where the data lived and `DATABASE_URL` said where it
+actually was, and nothing checked they agreed. A deployment could declare
+`rwanda_self_hosted` while pointing at RDS in Ireland and start without
+complaint -- which is the blueprint's stated architecture blocker, arriving
+exactly the way it warns about: "do not scaffold onto a managed US/EU database
+just for now."
+
+The check refuses a connection to a managed provider with no Rwandan region.
+It deliberately **does not geolocate**: that needs a database somebody keeps
+current, it is wrong at the edges, and a check that is wrong at the edges gets
+switched off. It refuses what is certainly wrong and accepts what it cannot
+verify.
+
+Two settings are refused outside `local_dev` by the same validator, because
+both are things changed under pressure rather than decided:
+
+- `require_mfa_for_identity=false` -- a password alone would reach national ID
+  numbers, and one leaked coordinator login would be enough.
+- `debug=true` -- error pages would show query fragments and schema to whoever
+  provoked them.
+
+Configuration is where a compliance posture gets quietly abandoned. It is
+worth validating as carefully as the data.
+
 ### Measured at a hundred times the pilot, and what it showed
 
 A registry of 2,000 candidates, 400 requests and 400 placements. Everything on

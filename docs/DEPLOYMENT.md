@@ -23,8 +23,27 @@ region. Law No. 058/2021 requires personal data to be stored in Rwanda unless a
 registration certificate authorises otherwise, and the realistic way to breach
 that is not a decision — it is a convenient default nobody revisited.
 
-The app refuses to start unless `DATA_RESIDENCY` is set. Setting it to something
-untrue is a thing a person has to do deliberately.
+The app refuses to start unless `DATA_RESIDENCY` is set, and it now checks the
+declaration against the connection string rather than taking it on trust.
+Declaring `rwanda_self_hosted` while `DATABASE_URL` points at RDS, Supabase,
+Neon, Azure, Cloud SQL or a dozen similar providers is refused at startup:
+none of them has a Rwandan region, so the claim and the connection cannot both
+be true.
+
+It does not try to geolocate an address. That needs a database somebody has to
+keep current, it is wrong at the edges, and a check that is wrong at the edges
+gets switched off. It refuses what is certainly wrong and accepts what it
+cannot verify — so a Rwandan VPS at `10.0.0.5` starts, and the honest scenario
+the blueprint warns about ("just for now, on the cloud database we already
+have") does not.
+
+Two settings are refused outside `local_dev` for the same reason:
+
+- `REQUIRE_MFA_FOR_IDENTITY=false` — the setting somebody turns off on a
+  Friday to get a coordinator logged in. A password alone would then reach
+  national ID numbers, and one leaked login would be enough.
+- `DEBUG=true` — error pages would show query fragments and schema to whoever
+  provoked them.
 
 Sizing for the pilot: 2 vCPU, 4 GB RAM, 40 GB disk is ample. This is a
 low-traffic, high-data-density admin system for a handful of coordinators.
