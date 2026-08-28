@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 
 
+
 def python_sources() -> list[Path]:
     return list(Path("app").rglob("*.py"))
 
@@ -34,7 +35,7 @@ def test_the_source_tree_is_findable_from_the_test_run():
 
 
 def test_the_clock_audit_reads_real_files():
-    """test_clock scans for CURRENT_DATE and date.today() in user-facing code."""
+    """test_clock scans for CURRENT_DATE and kigali_today() in user-facing code."""
     sources = [p for p in python_sources() if p.read_text().strip()]
     assert len(sources) > 25
     # And the thing it looks for exists somewhere, or the pattern is wrong.

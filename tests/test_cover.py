@@ -8,15 +8,15 @@ is worth less than an adequate one 10 minutes away.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from uuid import uuid4
 
-from app.clock import KIGALI
+from app.clock import KIGALI, kigali_today
 from app.matching.cover import MOBILISATION_MINUTES, find_cover
 from app.matching.engine import AvailabilityWindow, Candidate, WorkRequest
 
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 def shift(start="08:00", end="16:00", pay=6000, transport_covered=True):
@@ -211,7 +211,7 @@ def cover_setup(session, make_placement, employer_id):
     placement_id = make_placement()
     session.execute(
         text("UPDATE work_requests SET shift_start = '08:00', "
-             "shift_end = '18:00', starts_on = CURRENT_DATE, "
+             "shift_end = '18:00', starts_on = kigali_today(), "
              "transport_covered = TRUE"),
     )
     session.execute(
@@ -222,7 +222,7 @@ def cover_setup(session, make_placement, employer_id):
     session.execute(
         text("INSERT INTO attendance (placement_id, work_date, present, "
              "confirmed_by, confirmed_at, absence_reason) "
-             "VALUES (:p, CURRENT_DATE, FALSE, 'employer', now(), 'no show')"),
+             "VALUES (:p, kigali_today(), FALSE, 'employer', now(), 'no show')"),
         {"p": str(placement_id)},
     )
     return placement_id

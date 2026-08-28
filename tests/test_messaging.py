@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.messaging.events import on_placement_offered
 from app.messaging.outbox import (
     KIGALI,
@@ -27,9 +28,10 @@ from app.operations.attendance import (
 )
 from app.operations.requests import respond_to_offer
 
+
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 def sending_moment() -> datetime:

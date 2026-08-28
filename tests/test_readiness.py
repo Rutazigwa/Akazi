@@ -8,15 +8,17 @@ one that never happens.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.readiness import shifts_on, unstaffed_shifts_on
 
 
-TOMORROW = date.today() + timedelta(days=1)
+
+TOMORROW = kigali_today() + timedelta(days=1)
 
 
 @pytest.fixture
@@ -77,7 +79,7 @@ def test_a_shift_with_nothing_outstanding_carries_no_flags(session, shift):
         text("INSERT INTO work_requests (employer_id, title, work_type, "
              "headcount, starts_on, pay_rwf, pay_unit) "
              "SELECT employer_id, 'Last week', 'shift', 1, "
-             "CURRENT_DATE - 14, 5000, 'day' FROM work_requests "
+             "kigali_today() - 14, 5000, 'day' FROM work_requests "
              "WHERE request_id = :r RETURNING request_id"),
         {"r": str(made["request_id"])},
     ).scalar_one()

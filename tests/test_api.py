@@ -5,13 +5,14 @@ fires with a deadline, a replacement covers it, and the scorecard reflects both.
 """
 
 from __future__ import annotations
+from app.clock import kigali_today
 
 import os
-from datetime import date
+
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 def test_no_show_to_covered_shift(client, session, make_placement, make_candidate):

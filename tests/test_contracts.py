@@ -8,11 +8,11 @@ they said yes, and it cannot be the live rows, which have moved on.
 from __future__ import annotations
 
 import os
-from datetime import date
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.contracts import (
     ContractError,
     acknowledge,
@@ -23,9 +23,10 @@ from app.operations.contracts import (
 )
 from app.operations.requests import respond_to_offer
 
+
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 @pytest.fixture

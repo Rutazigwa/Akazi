@@ -8,11 +8,12 @@ accountable for answering is a reporting line, not a safeguard.
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.messaging.inbound import handle, interpret, record_inbound
 from app.operations.escalations import (
     ALWAYS_ESCALATE,
@@ -27,9 +28,10 @@ from app.operations.escalations import (
 from app.operations.follow_ups import complete_follow_up
 from app.operations.attendance import start_placement
 
+
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 def phone_of(session, candidate_id) -> str:
@@ -407,7 +409,7 @@ def test_a_harassment_flag_without_a_note_is_refused(session, make_placement):
     placement_id = make_placement()
     follow_up_id = session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
-             "VALUES (:p, 'day_1', CURRENT_DATE) RETURNING follow_up_id"),
+             "VALUES (:p, 'day_1', kigali_today()) RETURNING follow_up_id"),
         {"p": str(placement_id)},
     ).scalar_one()
 
@@ -423,7 +425,7 @@ def test_a_flagged_call_reaches_the_owner_with_its_detail(session,
     placement_id = make_placement()
     follow_up_id = session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
-             "VALUES (:p, 'day_1', CURRENT_DATE) RETURNING follow_up_id"),
+             "VALUES (:p, 'day_1', kigali_today()) RETURNING follow_up_id"),
         {"p": str(placement_id)},
     ).scalar_one()
 
@@ -444,7 +446,7 @@ def test_an_ordinary_flag_still_needs_no_note(session, make_placement):
     placement_id = make_placement()
     follow_up_id = session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
-             "VALUES (:p, 'day_1', CURRENT_DATE) RETURNING follow_up_id"),
+             "VALUES (:p, 'day_1', kigali_today()) RETURNING follow_up_id"),
         {"p": str(placement_id)},
     ).scalar_one()
     complete_follow_up(session, follow_up_id, True, issue_flag="transport")
@@ -459,7 +461,7 @@ def test_the_form_offers_somewhere_to_write_it(web, session, make_placement):
     placement_id = make_placement()
     session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
-             "VALUES (:p, 'day_1', CURRENT_DATE)"),
+             "VALUES (:p, 'day_1', kigali_today())"),
         {"p": str(placement_id)},
     )
     page = web.get(f"/ui/placements/{placement_id}").text
@@ -472,7 +474,7 @@ def test_the_page_says_why_when_it_refuses(web, session, make_placement):
     placement_id = make_placement()
     session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
-             "VALUES (:p, 'day_1', CURRENT_DATE)"),
+             "VALUES (:p, 'day_1', kigali_today())"),
         {"p": str(placement_id)},
     )
     follow_up_id = session.execute(

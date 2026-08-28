@@ -9,11 +9,13 @@ If this test passes, the system does the job it was built for.
 """
 
 from __future__ import annotations
+from app.clock import kigali_today
 
 import os
 from datetime import date, timedelta
 
 from sqlalchemy import text
+
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
@@ -30,7 +32,7 @@ def register_candidate(client, name, home, **overrides):
     body = {
         "legal_first_name": name,
         "legal_last_name": "Test",
-        "date_of_birth": str(date.today() - timedelta(days=365 * 24)),
+        "date_of_birth": str(kigali_today() - timedelta(days=365 * 24)),
         "phone_primary": f"+2507{abs(hash(name)) % 100_000_000:08d}",
         "display_name": name,
         "district": "Gasabo",
@@ -242,7 +244,7 @@ def test_an_under_16_registration_is_refused(client):
         "/candidates",
         json={
             "legal_first_name": "Too", "legal_last_name": "Young",
-            "date_of_birth": str(date.today() - timedelta(days=365 * 15)),
+            "date_of_birth": str(kigali_today() - timedelta(days=365 * 15)),
             "phone_primary": "+250780000010", "display_name": "Too Young",
             "district": "Gasabo", "sector": "Remera",
             "consent_captured_via": "paper",

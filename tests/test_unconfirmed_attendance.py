@@ -25,7 +25,7 @@ def running_since(session, make_placement, days_ago, status="active",
     placement_id = make_placement(candidate_id=candidate_id)
     session.execute(
         text("UPDATE placements SET status = CAST(:s AS placement_status), "
-             "started_on = CURRENT_DATE - make_interval(days => :d) "
+             "started_on = kigali_today() - make_interval(days => :d) "
              "WHERE placement_id = :p"),
         {"s": status, "d": days_ago, "p": str(placement_id)},
     )
@@ -35,7 +35,7 @@ def running_since(session, make_placement, days_ago, status="active",
 def confirm(session, placement_id, days_ago, present=True):
     session.execute(
         text("INSERT INTO attendance (placement_id, work_date, present, "
-             "confirmed_by, confirmed_at) VALUES (:p, CURRENT_DATE - "
+             "confirmed_by, confirmed_at) VALUES (:p, kigali_today() - "
              "make_interval(days => :d), :present, 'employer', now())"),
         {"p": str(placement_id), "d": days_ago, "present": present},
     )
@@ -198,7 +198,7 @@ def test_a_placement_that_finished_weeks_ago_is_not_chased(session,
     placement_id = running_since(session, make_placement, 40,
                                  status="completed")
     session.execute(
-        text("UPDATE placements SET ended_on = CURRENT_DATE - 25 "
+        text("UPDATE placements SET ended_on = kigali_today() - 25 "
              "WHERE placement_id = :p"),
         {"p": str(placement_id)},
     )
@@ -211,7 +211,7 @@ def test_a_placement_that_finished_this_week_is_still_chased(session,
     placement_id = running_since(session, make_placement, 10,
                                  status="completed")
     session.execute(
-        text("UPDATE placements SET ended_on = CURRENT_DATE - 2 "
+        text("UPDATE placements SET ended_on = kigali_today() - 2 "
              "WHERE placement_id = :p"),
         {"p": str(placement_id)},
     )

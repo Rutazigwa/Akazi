@@ -7,17 +7,19 @@ not be computed at all.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.employer_portal import post_request, reorder
 from app.operations.requests import create_work_request
 
 
-TOMORROW = date.today() + timedelta(days=1)
-NEXT_WEEK = date.today() + timedelta(days=8)
+
+TOMORROW = kigali_today() + timedelta(days=1)
+NEXT_WEEK = kigali_today() + timedelta(days=8)
 
 
 def _request(session, employer_id, **over):

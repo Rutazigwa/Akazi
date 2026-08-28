@@ -10,16 +10,17 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import date
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.auth import login
+
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 TEMPORARY = "a-temporary-issued-password"
 CHOSEN = "the-password-they-picked"
 

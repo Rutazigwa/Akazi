@@ -1362,6 +1362,20 @@ which is exactly why nobody would find it.
 `KIGALI` is defined once in `app/clock.py`. Two modules disagreeing about
 the offset would be worse than one being wrong consistently.
 
+
+**The tests were exempt from this and should not have been.** Thirty-three SQL
+`CURRENT_DATE` and forty-one Python `date.today()` calls in fixtures set data
+up against the *server's* date while the code compared against Kigali's. Five
+tests failed at 01:09 Kigali and would have passed again by morning -- the
+worst kind of failure, because a suite that only fails at night gets rerun
+rather than read. `test_clock.py` now scans the tests as well as `app/`.
+
+A related trap in the same family: the registration form covers Monday to
+Friday, so a test posting a shift for "today" matches nobody two days in
+seven. `next_weekday()` in conftest makes that a choice rather than an
+accident. **A test that depends on when it runs is one people learn to
+ignore**, and then the real failure beside it is ignored too.
+
 ### Read-then-write is a race until it is serialised
 
 Three checks in this system had the shape "count or look, then insert", and

@@ -12,18 +12,19 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import date
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.matching.repository import find_matches
 from app.operations.registry import record_consent
 from app.operations.requests import require_skill
 
+
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 @pytest.fixture

@@ -9,11 +9,11 @@ metric that was derived from straight-line distance and reported as measured.
 """
 from __future__ import annotations
 
-from datetime import date
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.matching.repository import find_matches
 from app.matching.transport import (
     MIN_CALIBRATION_REPORTS,
@@ -117,7 +117,7 @@ def test_what_we_predicted_is_kept_alongside_it(session, make_placement):
 def test_asking_twice_about_the_same_day_corrects_it(session, make_placement):
     """A worker asked again should correct the record, not double-weight it."""
     placement_id = make_placement()
-    day = date.today()
+    day = kigali_today()
     record_transport_report(session, placement_id=placement_id,
                             reported_rwf=1400, work_date=day)
     record_transport_report(session, placement_id=placement_id,
@@ -248,7 +248,7 @@ def test_the_fare_is_asked_for_at_the_check_in(web, session, make_placement):
     placement_id = make_placement()
     session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
-             "VALUES (:p, 'day_1', CURRENT_DATE) RETURNING follow_up_id"),
+             "VALUES (:p, 'day_1', kigali_today()) RETURNING follow_up_id"),
         {"p": str(placement_id)},
     )
     follow_up_id = session.execute(
@@ -276,7 +276,7 @@ def test_a_check_in_without_a_fare_still_records(web, session, make_placement):
     placement_id = make_placement()
     session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
-             "VALUES (:p, 'day_1', CURRENT_DATE)"),
+             "VALUES (:p, 'day_1', kigali_today())"),
         {"p": str(placement_id)},
     )
     follow_up_id = session.execute(
@@ -302,7 +302,7 @@ def test_an_implausible_fare_does_not_lose_the_check_in(web, session,
     placement_id = make_placement()
     session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
-             "VALUES (:p, 'day_1', CURRENT_DATE)"),
+             "VALUES (:p, 'day_1', kigali_today())"),
         {"p": str(placement_id)},
     )
     follow_up_id = session.execute(

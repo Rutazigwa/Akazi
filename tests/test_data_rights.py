@@ -9,11 +9,12 @@ attendance and another candidate's replacement chain with it.
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.attendance import (
     log_attendance,
     record_replacement,
@@ -31,7 +32,7 @@ from app.operations.data_rights import (
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 # --- access ---------------------------------------------------------------

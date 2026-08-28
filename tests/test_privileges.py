@@ -11,17 +11,19 @@ every other test passes.
 """
 
 from __future__ import annotations
+from app.clock import kigali_today
 
 import os
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 @contextmanager

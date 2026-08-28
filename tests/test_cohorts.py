@@ -14,11 +14,12 @@ of it today.
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.cohorts import (
     CohortError,
     add_member,
@@ -32,7 +33,7 @@ from app.operations.cohorts import (
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 @pytest.fixture

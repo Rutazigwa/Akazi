@@ -9,11 +9,12 @@ visible as a hole.
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.attendance import log_attendance, start_placement
 from app.operations.pay import (
     PayError,
@@ -26,7 +27,7 @@ from app.operations.pay import (
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 WEEK_AGO = TODAY - timedelta(days=7)
 
 

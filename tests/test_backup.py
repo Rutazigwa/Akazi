@@ -66,7 +66,7 @@ def populated_db(scratch_database_module) -> str:
                         (candidate_id, legal_first_name, legal_last_name,
                          date_of_birth, phone_primary)
                     VALUES (:cid, 'Backup', 'Test',
-                            CURRENT_DATE - INTERVAL '22 years', :phone)
+                            kigali_today() - INTERVAL '22 years', :phone)
                     """
                 ),
                 {

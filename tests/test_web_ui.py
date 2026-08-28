@@ -9,17 +9,20 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
+from tests.conftest import next_weekday
 from app.auth import login
 from tests.conftest import totp_now
 
+
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 SITE = (-1.9550, 30.1150)
 NEARBY = (-1.9480, 30.1050)
 
@@ -202,7 +205,8 @@ def test_the_full_loop_through_the_ui(web, session):
         data={
             "csrf_token": csrf(page), "employer_id": employer_id,
             "title": "Morning cleaner", "work_type": "shift", "headcount": "1",
-            "starts_on": str(TODAY), "shift_start": "08:00", "shift_end": "16:00",
+            "starts_on": str(next_weekday()), "shift_start": "08:00",
+            "shift_end": "16:00",
             "pay_rwf": "5000", "pay_unit": "day", "transport_covered": "false",
         },
         follow_redirects=True,

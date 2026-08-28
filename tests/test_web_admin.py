@@ -9,17 +9,18 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import date
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.auth import AuthError, login
 from tests.conftest import totp_now
 
+
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 def csrf(html: str) -> str:

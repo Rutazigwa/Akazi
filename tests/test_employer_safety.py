@@ -245,7 +245,7 @@ def test_it_is_collected_at_the_check_in(web, session, make_placement, woman):
     placement_id = placement_for(session, make_placement, woman())
     session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
-             "VALUES (:p, 'day_1', CURRENT_DATE)"),
+             "VALUES (:p, 'day_1', kigali_today())"),
         {"p": str(placement_id)},
     )
     follow_up_id = session.execute(

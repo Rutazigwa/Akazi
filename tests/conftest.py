@@ -11,17 +11,19 @@ matching and config tests still run anywhere.
 """
 
 from __future__ import annotations
+from app.clock import kigali_today
 
 import os
 import subprocess
 import uuid
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
+
 
 # Throwaway: the role exists only inside a scratch database that is dropped
 # at the end of the module.
@@ -190,7 +192,7 @@ def make_candidate(session, staff_id):
                 """
             ),
             {
-                "dob": date.today() - timedelta(days=365 * age_years + 10),
+                "dob": kigali_today() - timedelta(days=365 * age_years + 10),
                 "phone": f"+25079{uuid.uuid4().int % 10_000_000:07d}",
             },
         ).scalar_one()
@@ -257,7 +259,7 @@ def make_request(session, employer_id):
                 INSERT INTO work_requests (employer_id, title, work_type,
                                            headcount, starts_on, pay_rwf, pay_unit)
                 VALUES (:eid, 'Morning cleaner', 'shift', :headcount,
-                        CURRENT_DATE, :pay, 'day')
+                        kigali_today(), :pay, 'day')
                 RETURNING request_id
                 """
             ),
@@ -375,6 +377,24 @@ def client(api, staff_login):
     )
     assert elevated.status_code == 200, elevated.text
     return api
+
+
+def next_weekday(reference=None):
+    """The next day the candidate registration form actually covers.
+
+    That form offers seven days with Monday to Friday selected, so a test
+    posting a shift for "today" matches nobody two days in seven -- and fails
+    on a Saturday for a reason that has nothing to do with what it is testing.
+    A test that depends on the day it runs is a test people learn to ignore.
+    """
+    from datetime import timedelta
+
+    from app.clock import kigali_today
+
+    day = reference or kigali_today()
+    while day.weekday() > 4:
+        day += timedelta(days=1)
+    return day
 
 
 def csrf(html: str) -> str:

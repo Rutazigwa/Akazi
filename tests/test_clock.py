@@ -124,3 +124,57 @@ def test_one_definition_of_the_offset():
     from app.messaging.outbox import KIGALI as messaging_kigali
 
     assert messaging_kigali is KIGALI
+
+
+# --- the same rule, applied to the tests themselves ------------------------
+
+def test_no_test_uses_the_server_date():
+    """The application uses kigali_today() everywhere, and the tests did not.
+
+    For the two hours between 22:00 and midnight UTC the server's date and
+    Kigali's differ, so fixtures built with CURRENT_DATE or date.today() set
+    up data one day off from what the code under test compares against. Five
+    tests failed at 01:09 Kigali and passed again by morning -- which is the
+    worst kind, because a suite that fails at night gets rerun rather than
+    read.
+    """
+    import pathlib
+    import re
+
+    offenders = []
+    for path in pathlib.Path("tests").rglob("*.py"):
+        # This file asserts about those strings, and the audit backstop names
+        # them as things to look for.
+        if path.name in {"test_clock.py", "test_audits_are_not_vacuous.py"}:
+            continue
+        source = path.read_text()
+        for number, line in enumerate(source.splitlines(), 1):
+            if re.search(r"\bCURRENT_DATE\b|\bdate\.today\(\)", line):
+                offenders.append(f"{path.name}:{number}")
+
+    assert offenders == [], (
+        f"{offenders} -- use kigali_today() so the fixture and the code under "
+        "test agree about what day it is."
+    )
+
+
+def test_the_scan_covers_the_test_suite():
+    """Guards the guard."""
+    import pathlib
+
+    assert len(list(pathlib.Path("tests").rglob("*.py"))) > 30
+
+
+def test_a_shift_for_today_is_not_assumed_to_match():
+    """The registration form covers Monday to Friday, so a test posting a
+    shift for "today" matches nobody two days in seven. next_weekday() exists
+    so that is a choice rather than an accident."""
+    from datetime import timedelta
+
+    from tests.conftest import next_weekday
+
+    from app.clock import kigali_today
+
+    for offset in range(7):
+        day = next_weekday(kigali_today() + timedelta(days=offset))
+        assert day.weekday() <= 4, day

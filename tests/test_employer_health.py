@@ -11,10 +11,11 @@ shifts repeatedly go uncovered is subsidised by the ones whose do not.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.employer_health import (
     DISTINCT_NO_SHOWS_BEFORE_CONCERN,
     ENOUGH_TO_JUDGE,
@@ -39,7 +40,7 @@ def checked_at_30_days(session, make_placement, make_candidate, request_id,
                                   request_id=request_id)
     session.execute(
         text("INSERT INTO follow_ups (placement_id, checkpoint, due_on, "
-             "completed_at, still_working) VALUES (:p, 'day_30', CURRENT_DATE, "
+             "completed_at, still_working) VALUES (:p, 'day_30', kigali_today(), "
              "now(), :w)"),
         {"p": str(placement_id), "w": still_working},
     )
@@ -100,7 +101,7 @@ def test_an_uncovered_guarantee_is_reported(session, make_placement,
     session.execute(
         text("INSERT INTO attendance (placement_id, work_date, present, "
              "confirmed_by, confirmed_at, absence_reason) VALUES "
-             "(:p, CURRENT_DATE, FALSE, 'employer', now(), 'no show')"),
+             "(:p, kigali_today(), FALSE, 'employer', now(), 'no show')"),
         {"p": str(placement_id)},
     )
     findings = only(session, employer_id)["findings"]
@@ -165,7 +166,7 @@ def test_a_cooperative_with_a_problem_is_ranked_higher(
     def spoil(employer_id):
         request_id = create_work_request(
             session, employer_id=employer_id, title="Shift", work_type="shift",
-            headcount=1, starts_on=date.today() + timedelta(days=1),
+            headcount=1, starts_on=kigali_today() + timedelta(days=1),
             pay_rwf=5000, pay_unit="day",
         )
         for _ in range(DISTINCT_NO_SHOWS_BEFORE_CONCERN):

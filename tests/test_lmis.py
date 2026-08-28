@@ -9,11 +9,12 @@ an incident.
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.attendance import start_placement
 from app.operations.follow_ups import complete_follow_up
 from app.operations.lmis import (
@@ -30,7 +31,7 @@ from app.operations.lmis import (
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 WINDOW = ReportWindow(starts_on=TODAY - timedelta(days=90), ends_on=TODAY)
 
 

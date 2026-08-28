@@ -9,11 +9,12 @@ not the reason is a system that helps.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.pay import (
     PayError,
     deduction_lines,
@@ -22,9 +23,9 @@ from app.operations.pay import (
 )
 
 
-START = date.today() - timedelta(days=7)
-END = date.today()
-DUE = date.today() + timedelta(days=3)
+START = kigali_today() - timedelta(days=7)
+END = kigali_today()
+DUE = kigali_today() + timedelta(days=3)
 
 
 def pay(session, placement_id, **over):

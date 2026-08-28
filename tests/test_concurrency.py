@@ -22,8 +22,10 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
+from app.clock import kigali_today
 from app.matching.repository import find_matches
 from app.operations.requests import RequestError, offer_placement
+
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
@@ -61,7 +63,7 @@ def live_db(scratch_database):
             text(
                 "INSERT INTO candidate_identity (legal_first_name, "
                 " legal_last_name, date_of_birth, phone_primary) "
-                "VALUES ('A','U', CURRENT_DATE - INTERVAL '22 years', "
+                "VALUES ('A','U', kigali_today() - INTERVAL '22 years', "
                 " '+250780000002') RETURNING candidate_id"
             )
         ).scalar_one()
@@ -105,7 +107,7 @@ def live_db(scratch_database):
                         "INSERT INTO work_requests (employer_id, title, "
                         " work_type, headcount, starts_on, pay_rwf, pay_unit, "
                         " shift_start, shift_end) "
-                        "VALUES (:e,'Shift','shift',1,CURRENT_DATE,5000,'day',"
+                        "VALUES (:e,'Shift','shift',1,kigali_today(),5000,'day',"
                         " '08:00','16:00') RETURNING request_id"
                     ),
                     {"e": employer},
@@ -266,7 +268,7 @@ def test_a_cohort_with_one_place_admits_one_person(live_db):
         cohort = conn.execute(
             text(
                 "INSERT INTO cohorts (name, starts_on, facilitator, capacity) "
-                "VALUES ('Orientation', CURRENT_DATE, :s, 1) RETURNING cohort_id"
+                "VALUES ('Orientation', kigali_today(), :s, 1) RETURNING cohort_id"
             ),
             {"s": live_db["staff"]},
         ).scalar_one()
@@ -276,7 +278,7 @@ def test_a_cohort_with_one_place_admits_one_person(live_db):
                 text(
                     "INSERT INTO candidate_identity (legal_first_name, "
                     " legal_last_name, date_of_birth, phone_primary) "
-                    "VALUES (:n,'X', CURRENT_DATE - INTERVAL '22 years', :p) "
+                    "VALUES (:n,'X', kigali_today() - INTERVAL '22 years', :p) "
                     "RETURNING candidate_id"
                 ),
                 {"n": f"P{n}", "p": f"+2507800{n:05d}"},
@@ -320,11 +322,11 @@ def test_one_week_of_work_is_recorded_once(live_db):
     """Two coordinators entering the same week both found no overlap before
     either wrote: RWF 30,000 for a 15,000 week, which tells an employer they
     owe double or tells us a worker was paid twice."""
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     from app.operations.pay import record_pay_period
 
-    today = date.today()
+    today = kigali_today()
     engine = create_engine(live_db["url"], isolation_level="AUTOCOMMIT")
     with engine.connect() as conn:
         placement = conn.execute(
@@ -503,7 +505,7 @@ def test_only_one_cover_is_sent_for_one_no_show(live_db):
             text(
                 "INSERT INTO attendance (placement_id, work_date, present, "
                 " confirmed_by, absence_reason) "
-                "VALUES (:p, CURRENT_DATE, false, 'employer', 'no-show')"
+                "VALUES (:p, kigali_today(), false, 'employer', 'no-show')"
             ),
             {"p": failed},
         )
@@ -513,7 +515,7 @@ def test_only_one_cover_is_sent_for_one_no_show(live_db):
                 text(
                     "INSERT INTO candidate_identity (legal_first_name, "
                     " legal_last_name, date_of_birth, phone_primary) "
-                    "VALUES (:n,'X', CURRENT_DATE - INTERVAL '22 years', :p) "
+                    "VALUES (:n,'X', kigali_today() - INTERVAL '22 years', :p) "
                     "RETURNING candidate_id"
                 ),
                 {"n": f"C{n}", "p": f"+2507800{n:05d}"},

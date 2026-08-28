@@ -9,11 +9,11 @@ is not the end of the attempt.
 from __future__ import annotations
 
 import os
-from datetime import date
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.messaging.events import on_placement_offered
 from app.messaging.outbox import (
     dispatch,
@@ -26,9 +26,10 @@ from app.messaging.providers import FailingProvider, RecordingProvider, SendResu
 from app.operations.registry import record_consent
 from tests.test_messaging import MIDDAY
 
+
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 @pytest.fixture

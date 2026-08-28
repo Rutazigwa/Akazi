@@ -7,10 +7,11 @@ be wrong, so all of these derive from the underlying rows.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.operations.attendance import (
     log_attendance,
     record_replacement,
@@ -18,7 +19,8 @@ from app.operations.attendance import (
 )
 from app.operations.follow_ups import complete_follow_up
 
-TODAY = date.today()
+
+TODAY = kigali_today()
 
 
 def scorecard(session) -> dict:

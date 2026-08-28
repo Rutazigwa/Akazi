@@ -11,14 +11,16 @@ method-based: the failure mode worth guarding against is a route added later
 that nobody remembers to protect.
 """
 from __future__ import annotations
+from app.clock import kigali_today
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
 
-NEXT_WEEK = date.today() + timedelta(days=7)
+
+NEXT_WEEK = kigali_today() + timedelta(days=7)
 
 
 @pytest.fixture

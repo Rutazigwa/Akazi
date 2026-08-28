@@ -9,11 +9,12 @@ and prior behaviour feeds the ranking.
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.matching.repository import find_matches
 from app.operations.attendance import log_attendance, start_placement
 from app.operations.employer_portal import EmployerPortalError, cancel_request
@@ -26,7 +27,7 @@ from app.operations.requests import (
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 @pytest.fixture
@@ -169,7 +170,7 @@ def test_the_worker_is_available_for_other_work_again(
         text(
             "INSERT INTO work_requests (employer_id, title, work_type, "
             "headcount, starts_on, pay_rwf, pay_unit, shift_start, shift_end) "
-            "VALUES (:e, 'Rival', 'shift', 1, CURRENT_DATE, 5000, 'day', "
+            "VALUES (:e, 'Rival', 'shift', 1, kigali_today(), 5000, 'day', "
             "'08:00', '16:00') RETURNING request_id"
         ),
         {"e": other},

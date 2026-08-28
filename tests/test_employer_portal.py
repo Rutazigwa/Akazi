@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import text
 
+from app.clock import kigali_today
 from app.employer_auth import (
     EmployerAuthError,
     authenticate_employer,
@@ -32,7 +33,7 @@ from app.operations.employer_portal import (
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-TODAY = date.today()
+TODAY = kigali_today()
 
 
 def csrf(html: str) -> str:
@@ -89,7 +90,7 @@ def rival(session, staff_id):
             """
             INSERT INTO work_requests (employer_id, title, work_type, headcount,
                                        starts_on, pay_rwf, pay_unit)
-            VALUES (:eid, 'Rival shift', 'shift', 1, CURRENT_DATE, 6000, 'day')
+            VALUES (:eid, 'Rival shift', 'shift', 1, kigali_today(), 6000, 'day')
             RETURNING request_id
             """
         ),
@@ -429,3 +430,105 @@ def test_an_employer_cannot_open_another_employers_worker_page(
     )
     r = portal.get(f"/employer/workers/{theirs}", follow_redirects=True)
     assert "No such worker" in r.text
+
+
+# --- the isolation boundary, attacked over HTTP ---------------------------
+#
+# The tests above check the operations layer, which is where the ownership
+# rules live. These go through the routes instead, with a signed-in employer
+# putting somebody else's identifiers in the URL -- the way it would actually
+# be attempted. A rule enforced in the operation but bypassed by a route that
+# forgets to call it would pass every test above.
+
+CROSS_TENANT_ATTEMPTS = [
+    ("read their worker", "get", "/employer/workers/{placement}", None),
+    ("mark their worker absent", "post", "/employer/workers/{placement}/attendance",
+     {"work_date": "2026-08-28", "present": "false", "absence_reason": "injected"}),
+    ("rate their worker", "post", "/employer/workers/{placement}/rate",
+     {"rating": "1", "note": "injected"}),
+    ("cancel their shift", "post", "/employer/requests/{request}/cancel",
+     {"reason": "injected"}),
+    ("reorder their shift", "post", "/employer/requests/{request}/reorder",
+     {"starts_on": "2026-09-30"}),
+]
+
+
+@pytest.fixture
+def rivals_placement(session, rival, make_placement, make_candidate):
+    return make_placement(request_id=rival["request_id"],
+                          candidate_id=make_candidate())
+
+
+@pytest.mark.parametrize("label,verb,path,payload", CROSS_TENANT_ATTEMPTS,
+                         ids=[a[0] for a in CROSS_TENANT_ATTEMPTS])
+def test_an_employer_cannot_reach_another_over_http(
+    portal, session, rival, rivals_placement, label, verb, path, payload
+):
+    target = path.format(placement=rivals_placement, request=rival["request_id"])
+
+    if payload is None:
+        response = portal.get(target, follow_redirects=True)
+    else:
+        home = portal.get("/employer/", follow_redirects=True)
+        response = portal.post(
+            target, data={**payload, "csrf_token": csrf(home.text)},
+            follow_redirects=True,
+        )
+
+    assert "Rival Retail" not in response.text, f"{label} leaked the employer"
+    assert "injected" not in response.text, f"{label} echoed the payload back"
+
+
+def test_no_attempt_changed_the_targets_data(portal, session, rival,
+                                             rivals_placement):
+    """The response saying no is not the same as nothing having happened."""
+    home = portal.get("/employer/", follow_redirects=True)
+    token = csrf(home.text)
+
+    portal.post(f"/employer/workers/{rivals_placement}/attendance",
+                data={"csrf_token": token, "work_date": "2026-08-28",
+                      "present": "false", "absence_reason": "injected"},
+                follow_redirects=True)
+    portal.post(f"/employer/workers/{rivals_placement}/rate",
+                data={"csrf_token": token, "rating": "1", "note": "injected"},
+                follow_redirects=True)
+    portal.post(f"/employer/requests/{rival['request_id']}/cancel",
+                data={"csrf_token": token, "reason": "injected"},
+                follow_redirects=True)
+
+    assert session.execute(
+        text("SELECT count(*) FROM attendance WHERE absence_reason = 'injected'")
+    ).scalar_one() == 0
+    assert session.execute(
+        text("SELECT count(*) FROM placements WHERE employer_note = 'injected'")
+    ).scalar_one() == 0
+    assert session.execute(
+        text("SELECT status::text FROM work_requests WHERE request_id = :r"),
+        {"r": str(rival["request_id"])},
+    ).scalar_one() != "cancelled"
+
+
+def test_the_same_calls_work_on_their_own_data(portal, session,
+                                               employer_account, make_request,
+                                               make_placement, make_candidate):
+    """The other half. Every assertion above is satisfied by a portal that
+    refuses everything, so this proves the calls are real."""
+    mine = make_placement(request_id=make_request(),
+                          candidate_id=make_candidate())
+    session.execute(
+        text("UPDATE placements SET status = 'active', started_on = kigali_today() "
+             "WHERE placement_id = :p"),
+        {"p": str(mine)},
+    )
+    home = portal.get("/employer/", follow_redirects=True)
+    confirmed = portal.post(
+        f"/employer/workers/{mine}/attendance",
+        data={"csrf_token": csrf(home.text), "work_date": str(kigali_today()),
+              "present": "true"},
+        follow_redirects=True,
+    )
+    assert confirmed.status_code == 200
+    assert session.execute(
+        text("SELECT count(*) FROM attendance WHERE placement_id = :p"),
+        {"p": str(mine)},
+    ).scalar_one() == 1

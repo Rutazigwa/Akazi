@@ -174,7 +174,7 @@ def test_an_internal_alert_is_sent_during_quiet_hours(session, make_candidate,
     They are not a reason to sit on a harassment escalation that missed its
     response time at 22:00.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
     from app.messaging.outbox import dispatch
     from app.messaging.providers import RecordingProvider
@@ -183,8 +183,12 @@ def test_an_internal_alert_is_sent_during_quiet_hours(session, make_candidate,
     breach(session, escalation_id)
     alert_on_missed_response_times(session)
 
-    # 22:30 Kigali, squarely inside quiet hours.
-    midnight_kigali = datetime.now(timezone.utc).replace(
+    # 22:30 Kigali, squarely inside quiet hours -- and tomorrow's, so it is
+    # always after the message was queued. Building it from today's date puts
+    # it in the past whenever the suite runs after 20:30 UTC, and then nothing
+    # is due and the test fails for a reason that has nothing to do with
+    # quiet hours.
+    midnight_kigali = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
         hour=20, minute=30, second=0, microsecond=0
     )
     report = dispatch(session, RecordingProvider(), now=midnight_kigali)
@@ -199,7 +203,7 @@ def test_an_internal_alert_is_sent_during_quiet_hours(session, make_candidate,
 
 def test_a_worker_message_is_still_held_during_quiet_hours(session,
                                                            make_candidate):
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
     from app.messaging.outbox import dispatch, queue
     from app.messaging.providers import RecordingProvider
@@ -207,7 +211,11 @@ def test_a_worker_message_is_still_held_during_quiet_hours(session,
     queue(session, template_key="shift_reminder", body="see you tomorrow",
           candidate_id=make_candidate())
 
-    midnight_kigali = datetime.now(timezone.utc).replace(
+    # Tomorrow's 22:30 Kigali, for the same reason as the test above: built
+    # from today's date it lands before the message was queued whenever the
+    # suite runs after 20:30 UTC, and a message that is not yet due is not
+    # evidence about quiet hours.
+    midnight_kigali = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
         hour=20, minute=30, second=0, microsecond=0
     )
     report = dispatch(session, RecordingProvider(), now=midnight_kigali)
