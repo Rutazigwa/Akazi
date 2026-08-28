@@ -59,6 +59,10 @@ from app.operations.catalogue import (
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
 from app.operations.jobs import backup_status, messaging_status
 from app.operations.readiness import shifts_on, unstaffed_shifts_on
+from app.operations.readiness_queue import (
+    registry_queue,
+    registry_summary,
+)
 from app.operations.employer_health import employers_needing_a_conversation
 from app.operations.safety import (
     SafetyReportError,
@@ -699,7 +703,13 @@ def candidates_page(request: Request, session: SessionDep, staff: WebStaffDep):
     ).mappings()
     return _render(
         request, "candidates.html", staff, nav="candidates",
-        candidates=[dict(r) for r in rows], **_flash(request),
+        candidates=[dict(r) for r in rows],
+        # Who is in the registry and not working. Somebody who never matches
+        # never appears on a match page, so without this they are invisible
+        # by construction. See migration 043.
+        queue=registry_queue(session),
+        registry=registry_summary(session),
+        **_flash(request),
     )
 
 

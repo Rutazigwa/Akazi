@@ -661,6 +661,35 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Nobody could ask who we are failing
+
+The matcher explains why each candidate was excluded from each request. It
+cannot show the person excluded from **every** request, always for the same
+reason, whom nobody has ever looked at. Individually each rejection is
+explained; in aggregate the registry is silent, and somebody who never matches
+never appears on a match page. The failure is invisible by construction.
+
+At pilot volume that is a handful of people. Against 928,426 NEET youth it is
+the whole question.
+
+Every blocker listed is fixable in a phone call -- capture a location, record
+availability, score one assessment, take consent -- which is why they appear
+in the order to work through them rather than as a count. **It is a work
+queue, not a report.** Each one states its consequence, not the missing field:
+"no home location" is a data note, "transport cannot be estimated, so they can
+never clear the transport filter or be offered as cover" is a reason to pick
+up the telephone.
+
+Women are broken out separately. Women's participation is a product
+requirement here, so a total that hid a disproportionate blocker would be the
+wrong total.
+
+Proportions are withheld and blockers are not invented: `age_eligible` being
+false cannot mean "too young" -- `chk_minimum_age` refuses such a row and
+erased records are filtered by status -- so it says the age could not be
+established, which is a data problem to investigate rather than a call to
+make.
+
 ### Which employers are worth having
 
 Every fact needed was already recorded and none of it was grouped by employer:

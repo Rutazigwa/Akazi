@@ -155,6 +155,39 @@ for first, code, score in [
              json={"assessment_id": assessments[code]["assessment_id"],
                    "score": score, "notes": ""}, headers=H)
 
+# Two partial registrations, because that is what intake actually looks like.
+# Candidates arrive over WhatsApp and a coordinator types in what they were
+# told: a name and a district, and the rest another day. A demo where every
+# record is complete is a demo of a system nobody has, and it hides the
+# registry queue entirely.
+for first, last, gender, note in [
+    ("Josiane", "Mukamurenzi", "F", "no home location, never assessed"),
+    ("Patrick", "Bizimana", "M", "no availability recorded yet"),
+]:
+    partial = api.post("/candidates", json={
+        "legal_first_name": first, "legal_last_name": last,
+        "date_of_birth": "2003-06-11",
+        "phone_primary": f"+25078{abs(hash(first + last)) % 900000 + 100000}",
+        "display_name": f"{first} {last[0]}.", "district": "Gasabo",
+        "sector": "Kimironko", "gender": gender,
+        "consent_captured_via": "whatsapp", "has_smartphone": True,
+        # Josiane gets availability but no location; Patrick the reverse.
+        **({"availability": []} if first == "Patrick" else {
+            "availability": [{"day_of_week": d, "start": "08:00:00",
+                              "end": "17:00:00"} for d in range(5)]}),
+        **({"home_lat": -1.9525, "home_lng": 30.1290}
+           if first == "Patrick" else {}),
+    }, headers=H)
+    if partial.status_code == 201:
+        cands[first] = partial.json()["candidate_id"]
+        print(f"  partial registration: {first} {last} — {note}")
+    else:
+        # Said out loud. A seeder that skips silently produces a demo missing
+        # the thing it was meant to show, and nobody finds out until someone
+        # is looking at the screen.
+        print(f"  could not register {first}: {partial.status_code} "
+              f"{str(partial.json())[:120]}")
+
 # --- a cohort -------------------------------------------------------------
 co = api.post("/cohorts", json={"name": "Orientation — March intake",
       "starts_on": str(TODAY - datetime.timedelta(days=20)), "women_only": True,

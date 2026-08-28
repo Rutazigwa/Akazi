@@ -3,6 +3,39 @@
 {% block body %}
 <h1>Candidates</h1>
 
+{% if queue %}
+<div class="card">
+  <h2 style="margin-top:0">Not working, and fixable ({{ queue|length }})</h2>
+  <p class="small muted">
+    {{ registry.blocked }} of {{ registry.in_registry }} people in the registry
+    are stuck behind something we can fix; {{ registry.never_offered }} have
+    never been offered anything. Somebody who never matches never appears on a
+    match page, so without this list they are invisible.
+  </p>
+  <table>
+    <tr><th>Person</th><th>Registered</th><th>What is stopping them</th></tr>
+    {% for c in queue %}
+    <tr>
+      <td><a href="/ui/candidates/{{ c.candidate_id }}">{{ c.display_name }}</a>
+        <br><span class="small muted">{{ c.district }}{% if c.gender %} · {{ c.gender }}{% endif %}</span></td>
+      <td class="small muted">{{ c.created_at.date() }}</td>
+      <td class="reason">
+        {% for b in c.blockers %}{{ b }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if registry.women_by_blocker %}
+  <p class="small muted">
+    Of these, women are held up by:
+    {% for blocker, n in registry.women_by_blocker.items() %}{{ n }} × {{ blocker }}{% if not loop.last %}; {% endif %}{% endfor %}.
+    Women's participation is a product requirement here, so a total that hid
+    this would be the wrong total.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if staff.can_view_identity and staff.mfa_satisfied %}
 <div class="card">
   <h2 style="margin-top:0">Register</h2>
