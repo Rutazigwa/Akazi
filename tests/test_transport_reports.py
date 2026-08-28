@@ -353,3 +353,80 @@ def test_the_api_refuses_an_implausible_fare_too(client, make_placement):
                           json={"reported_rwf": 45000})
     assert refused.status_code == 422
     assert "implausible" in refused.json()["detail"]
+
+
+# --- the headline metric ---------------------------------------------------
+
+def test_net_pay_uses_the_reported_fare_not_the_estimate(session,
+                                                         make_placement):
+    """The bug this fixes: the scorecard said transport was 26% of pay while
+    the workers' own receipts said 44%. The target is 25%, so it read as a
+    near miss when reality was a placement that dies in week two.
+    """
+    placement_id = make_placement(pay_rwf=6500, transport_rwf=1600)
+    record_transport_report(session, placement_id=placement_id,
+                            reported_rwf=2720)
+
+    row = session.execute(
+        text("SELECT * FROM v_placement_net_pay WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    ).mappings().one()
+    assert row["est_transport_rwf"] == 2720
+    assert row["net_daily_rwf"] == 6500 - 2720
+    assert row["from_receipts"] is True
+
+
+def test_the_estimate_is_kept_alongside_it(session, make_placement):
+    """The agreement quotes the figure as it stood when the work was accepted.
+    Rewriting it later would change what somebody was told they agreed to."""
+    placement_id = make_placement(pay_rwf=6500, transport_rwf=1600)
+    record_transport_report(session, placement_id=placement_id,
+                            reported_rwf=2720)
+
+    row = session.execute(
+        text("SELECT * FROM v_placement_net_pay WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    ).mappings().one()
+    assert row["estimated_rwf"] == 1600
+    assert row["reported_rwf"] == 2720
+    assert session.execute(
+        text("SELECT est_transport_rwf FROM placements WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    ).scalar_one() == 1600
+
+
+def test_a_placement_with_no_report_falls_back_to_the_estimate(session,
+                                                               make_placement):
+    placement_id = make_placement(pay_rwf=6500, transport_rwf=1600)
+    row = session.execute(
+        text("SELECT * FROM v_placement_net_pay WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    ).mappings().one()
+    assert row["est_transport_rwf"] == 1600
+    assert row["from_receipts"] is False
+
+
+def test_the_scorecard_moves_when_a_fare_is_reported(session, make_placement):
+    """The metric that goes in front of a funder."""
+    placement_id = make_placement(pay_rwf=6500, transport_rwf=1600)
+    before = session.execute(
+        text("SELECT avg_transport_pct FROM v_pilot_scorecard")
+    ).scalar_one()
+    record_transport_report(session, placement_id=placement_id,
+                            reported_rwf=2720)
+    after = session.execute(
+        text("SELECT avg_transport_pct FROM v_pilot_scorecard")
+    ).scalar_one()
+    assert after > before
+
+
+def test_the_placement_page_says_which_number_it_is_showing(web, session,
+                                                            make_placement):
+    """"1,600 estimated" and "2,720 reported" are different claims, and only
+    one of them is a measurement."""
+    placement_id = make_placement(pay_rwf=6500, transport_rwf=1600)
+    record_transport_report(session, placement_id=placement_id,
+                            reported_rwf=2720)
+    page = web.get(f"/ui/placements/{placement_id}").text
+    assert "reported" in page
+    assert "we had estimated 1,600" in page

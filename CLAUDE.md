@@ -661,6 +661,28 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Net earnings after transport must read the receipts
+
+Migration 039 collected what a commute actually costs and fed it into
+matching. It did not touch `v_placement_net_pay`, the view behind **net
+earnings after transport** -- a headline pilot metric and one of the four
+gaps.
+
+On the demo data the scorecard reported transport at **26.0% of pay while the
+workers' own receipts said 44.2%**. The target is 25%, so the number going to
+a funder read as a near miss when the receipts describe a placement that dies
+in week two -- exactly the failure the metric exists to detect.
+
+`placements.est_transport_rwf` is deliberately left alone. It is the figure as
+it stood when the work was agreed, the contract quotes it, and rewriting it
+afterwards would change what somebody was told they accepted. The view
+resolves at read time and carries `from_receipts`, because "1,600 estimated"
+and "2,720 reported" are different claims and only one is a measurement.
+
+**Wiring a measurement into one consumer is not wiring it in.** Any figure
+derived from an estimate needs checking against every place that estimate is
+read.
+
 ### Covering transport answers the money, and only the money
 
 `_transport_viability` returned early on `transport_covered`, waiving every

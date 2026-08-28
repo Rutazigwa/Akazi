@@ -1012,6 +1012,12 @@ def placement_page(
         # What this journey has actually cost, when anyone has said. The
         # estimate beside it is a straight line; these are receipts.
         fares=route_history(session, placement_id),
+        # Net pay from receipts where they exist. The header used to read the
+        # frozen estimate even where the worker had told us the real fare.
+        net=session.execute(
+            text("SELECT * FROM v_placement_net_pay WHERE placement_id = :p"),
+            {"p": str(placement_id)},
+        ).mappings().first(),
         # Why a wage was reduced, beside the reduction itself. A total with no
         # reason is what this exists to prevent.
         deductions={

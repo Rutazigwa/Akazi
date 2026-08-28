@@ -6,7 +6,17 @@
 <p class="muted small">
   {{ p.title }} · <span class="pill {{ 'good' if p.status in ('accepted','active','completed') else ('bad' if p.status in ('no_show','declined','terminated') else 'warn') }}">{{ p.status }}</span>
   · {{ '{:,}'.format(p.agreed_pay_rwf) }} RWF/{{ p.pay_unit }}
-  {% if p.est_transport_rwf %} · transport {{ '{:,}'.format(p.est_transport_rwf) }} RWF/day
+  {% if net %} ·
+    transport {{ '{:,}'.format(net.est_transport_rwf) }} RWF/day
+    {% if net.from_receipts %}<span class="pill good">reported</span>{% else %}<span class="pill warn">estimated</span>{% endif %}
+    (net {{ '{:,}'.format(net.net_daily_rwf) }})
+    {% if net.from_receipts and net.estimated_rwf != net.reported_rwf %}
+      <br><span class="small muted">
+        we had estimated {{ '{:,}'.format(net.estimated_rwf) }} — the agreement
+        quotes that figure, and it is not rewritten after the fact
+      </span>
+    {% endif %}
+  {% elif p.est_transport_rwf %} · transport {{ '{:,}'.format(p.est_transport_rwf) }} RWF/day
     (net {{ '{:,}'.format(p.agreed_pay_rwf - p.est_transport_rwf) }}){% endif %}
 </p>
 {% if p.match_reason %}
