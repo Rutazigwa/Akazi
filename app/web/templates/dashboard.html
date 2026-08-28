@@ -125,6 +125,31 @@
 </div>
 {% endif %}
 
+{% if unconfirmed %}
+<div class="card {% if unconfirmed|selectattr('urgent')|list %}urgent{% endif %}">
+  <h2 style="margin-top:0">Nobody said whether these happened ({{ unconfirmed|length }})</h2>
+  <table>
+    <tr><th>Worker</th><th>Employer</th><th>Silence</th><th></th></tr>
+    {% for u in unconfirmed %}
+    <tr>
+      <td>{{ u.display_name }}</td>
+      <td>{{ u.business_name }}<br><span class="small muted">{{ u.title }}</span></td>
+      <td class="small">
+        {{ u.summary }}
+        {% if u.urgent %}<br><span class="pill bad">guarantee window closed unnoticed</span>{% endif %}
+      </td>
+      <td><a class="small" href="/ui/placements/{{ u.placement_id }}">record it</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">
+    An unrecorded no-show is a guarantee we never knew we owed. Until the
+    employer says, a shift that went perfectly and one we should have covered
+    look identical.
+  </p>
+</div>
+{% endif %}
+
 {% if tomorrow_unstaffed or tomorrow_flagged %}
 <div class="card {% if tomorrow_unstaffed %}urgent{% endif %}">
   <h2 style="margin-top:0">Tomorrow needs attention</h2>

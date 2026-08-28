@@ -237,6 +237,25 @@ Quiet hours exist so a worker is not woken at 23:00 about a shift; they are
 not a reason to sit on a harassment escalation that missed its response time
 at 22:00. Staff are on duty in a way candidates are not.
 
+## Shifts nobody confirmed
+
+```bash
+0 10 * * *  cd /app && python scripts/chase_attendance.py
+```
+
+Attendance comes from the employer and it is the input the guarantee rests on.
+Until they say, a shift that went perfectly and one we should have covered
+look identical — and the expensive one is invisible.
+
+Once a day, not every five minutes: this is a question for somebody with a
+business to run, and asking twice before lunch is how a useful message becomes
+one that gets ignored. A unique index makes it once per placement regardless
+of how often the job runs.
+
+Only placements where the answer still changes something are chased — active
+ones, and completed ones that ended within a week. An employer asked about a
+shift that finished three weeks ago and was paid stops reading the messages.
+
 ## Escalations that missed their response time
 
 ```bash

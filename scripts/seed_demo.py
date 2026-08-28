@@ -62,6 +62,23 @@ if any(existing):
 
 api = httpx.Client(base_url=B, follow_redirects=True, timeout=30)
 
+
+def post(path: str, payload: dict, expect: tuple[int, ...] = (200, 201)):
+    """POST and complain loudly about anything unexpected.
+
+    Every call here used to ignore its status code, and one of them had been
+    posting to a route that does not exist since the seeder was written --
+    404, silently, so no placement in the demo was ever completed and the
+    retention and pay history were quietly thin. A seeder that swallows
+    failures produces a demo missing the thing it was meant to show.
+    """
+    response = api.post(path, json=payload, headers=H)
+    if response.status_code not in expect:
+        print(f"  ! POST {path} -> {response.status_code} "
+              f"{str(response.json())[:110]}", file=sys.stderr)
+    return response
+
+
 tok = api.post("/auth/login", json={"phone": args.phone,
        "password": args.password}).json()["token"]
 H = {"Authorization": f"Bearer {tok}"}
@@ -236,7 +253,8 @@ for first, employer, title in [("Aline", "Kimironko Market Stores", "Shop assist
         api.post(f"/placements/{pid}/attendance", json={
             "work_date": str(past + datetime.timedelta(days=d)), "present": True,
             "confirmed_by": "employer"}, headers=H)
-    api.post(f"/placements/{pid}/end", json={"ended_on": str(past + datetime.timedelta(days=20))}, headers=H)
+    post(f"/placements/{pid}/complete",
+         {"ended_on": str(past + datetime.timedelta(days=20))})
     pay_id = api.post(f"/placements/{pid}/pay", json={
         "period_start": str(past), "period_end": str(past + datetime.timedelta(days=20)),
         "gross_rwf": 110000, "due_on": str(past + datetime.timedelta(days=22))}, headers=H).json().get("pay_id")

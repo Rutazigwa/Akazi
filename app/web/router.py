@@ -33,6 +33,7 @@ from app.operations.attendance import (
     complete_placement,
     log_attendance,
     open_guarantees,
+    unconfirmed_attendance,
     record_replacement,
     start_placement,
     terminate_placement,
@@ -280,6 +281,9 @@ def dashboard(request: Request, session: SessionDep, staff: WebStaffDep):
         unread_replies=needs_attention(session),
         overdue_pay=overdue_pay(session),
         guarantees=open_guarantees(session),
+        # Silence is not success: an unrecorded no-show is a guarantee we
+        # never knew we owed. See migration 045.
+        unconfirmed=unconfirmed_attendance(session),
         follow_ups=due_follow_ups(session, kigali_today()),
         requests=open_requests(session),
         # The preventive half. Everything else on this page reports something

@@ -420,3 +420,88 @@ def open_guarantees(session: Session) -> list[dict]:
         )
     ).mappings()
     return [dict(r) for r in rows]
+
+
+# A shift finishing at 18:00 is not confirmable at 18:01. One clear day gives
+# the employer a working morning to answer before anybody is chased.
+SILENT_AFTER_DAYS = 2
+
+# Long enough that it is no longer a slow reply. At this point the guarantee
+# window has closed unnoticed: if the worker did not arrive, we owed cover and
+# never knew.
+SILENT_TOO_LONG_DAYS = 5
+
+
+def unconfirmed_attendance(session: Session) -> list[dict]:
+    """Placements nobody has confirmed, longest silence first.
+
+    Silence is not success. An unrecorded no-show is a guarantee we never knew
+    we owed, and the employer finds out we were not watching when they decline
+    to reorder.
+    """
+    rows = session.execute(
+        text(
+            """
+            SELECT * FROM v_unconfirmed_attendance
+             WHERE days_silent >= :days
+             ORDER BY days_silent DESC
+            """
+        ),
+        {"days": SILENT_AFTER_DAYS},
+    ).mappings()
+
+    out = []
+    for row in rows:
+        record = dict(row)
+        record["never_confirmed"] = record["records"] == 0
+        record["urgent"] = record["days_silent"] >= SILENT_TOO_LONG_DAYS
+        record["summary"] = (
+            f"nothing recorded since it started {record['days_silent']} days ago"
+            if record["never_confirmed"]
+            else f"last confirmed {record['last_confirmed_on']}, "
+                 f"{record['days_silent']} days ago"
+        )
+        out.append(record)
+    return out
+
+
+def chase_unconfirmed_attendance(session: Session) -> dict:
+    """Ask the employer whether the worker turned up.
+
+    Sent to the employer rather than raised internally, because they are the
+    only ones who know. One message per placement per day of silence would be
+    nagging, so it goes once and then the placement stays on the coordinator's
+    list.
+    """
+    from app.messaging.outbox import queue
+    from app.messaging.templates import render
+
+    asked = 0
+    for row in unconfirmed_attendance(session):
+        contact_id = session.execute(
+            # The primary contact where there is one. employer_contacts has
+            # no created_at, so the tie-break is the id rather than an
+            # invented ordering.
+            text("SELECT contact_id FROM employer_contacts "
+                 "WHERE employer_id = :eid AND is_active "
+                 "ORDER BY is_primary DESC, contact_id LIMIT 1"),
+            {"eid": str(row["employer_id"])},
+        ).scalar_one_or_none()
+        if contact_id is None:
+            continue
+
+        queued = queue(
+            session,
+            template_key="attendance_unconfirmed",
+            body=render(
+                "attendance_unconfirmed",
+                display_name=row["display_name"],
+                title=row["title"],
+                started_on=row["started_on"],
+            ),
+            contact_id=contact_id,
+            placement_id=row["placement_id"],
+        )
+        if queued is not None:
+            asked += 1
+    return {"asked": asked}

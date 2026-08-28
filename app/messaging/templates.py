@@ -121,6 +121,19 @@ TEMPLATES: dict[str, Template] = {
     # subjects of the messaging consent regime, they are on duty. It carries
     # no name and no detail of what was reported -- a missed response time is
     # a prompt to open the escalation, not a channel for the report itself.
+    # To the employer. They are the only ones who know whether somebody
+    # turned up, and until they say, we cannot tell a shift that went well
+    # from one we owed cover on.
+    "attendance_unconfirmed": Template(
+        key="attendance_unconfirmed",
+        requires_consent=False,
+        text=(
+            "Akazi: did {display_name} work the {title} shift that started "
+            "{started_on}?\n"
+            "Confirm in your dashboard, or reply and we will record it. "
+            "If they did not arrive, we cover the slot free of charge."
+        ),
+    ),
     "escalation_breach": Template(
         key="escalation_breach",
         requires_consent=False,

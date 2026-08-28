@@ -661,6 +661,32 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Silence looked exactly like success
+
+Attendance is confirmed by the employer and it is the input the whole
+guarantee rests on. **Nothing noticed when it never arrived.** A shift ran on
+Tuesday, nobody recorded whether the worker turned up, and the placement sat
+there looking exactly like one that went perfectly well: the guarantee clock
+never started, and pay could not be computed.
+
+For a business whose promise is "the shift gets covered, and if it does not we
+cover it", an unrecorded no-show is the most expensive silence there is. The
+employer knows, the worker knows, and we find out when the employer declines
+to reorder.
+
+Two deliberate limits:
+
+- **It does not enumerate the days a placement was expected to work.** The
+  system models a shift window and a date range, not a working calendar -- a
+  weekend cleaner and a five-day shop assistant are indistinguishable here, so
+  inventing the missing days would produce confident nonsense for one of them.
+  It reports only what is certain: no attendance at all, or a last record that
+  is old while the placement still runs.
+- **Only while the answer still changes something.** Active placements
+  always; completed ones for a week after they end. An employer asked about a
+  shift that finished three weeks ago and was settled stops reading the
+  messages, and the next one is the one that matters.
+
 ### Data rights go stale as the schema grows
 
 The subject access export and `erase_candidate_identity` were both written
