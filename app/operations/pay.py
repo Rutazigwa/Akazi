@@ -40,6 +40,7 @@ def record_pay_period(
     due_on: date,
     deductions_rwf: int = 0,
     method: str | None = None,
+    deductions: list[dict] | None = None,
 ) -> UUID:
     """Open a pay period: what is owed, and when it falls due.
 
@@ -53,6 +54,22 @@ def record_pay_period(
         raise PayError("gross pay must be positive")
     if deductions_rwf < 0 or deductions_rwf > gross_rwf:
         raise PayError("deductions must be between zero and gross pay")
+
+    # Money off a wage needs a stated reason. The database enforces this at
+    # commit too, because a bulk import of paper payslips skips this code --
+    # but refusing here gives the coordinator a sentence they can act on
+    # rather than a constraint violation. See migration 040.
+    lines = list(deductions or [])
+    if deductions_rwf and not lines:
+        raise PayError(
+            f"RWF {deductions_rwf:,} is being deducted with no reason given. "
+            "Itemise it: a worker with no payslip cannot query what they "
+            "cannot see"
+        )
+    if lines and sum(int(d["amount_rwf"]) for d in lines) != deductions_rwf:
+        raise PayError(
+            "the itemised deductions do not add up to the total deducted"
+        )
     if due_on < period_start:
         raise PayError("pay cannot fall due before the period it covers")
     if method is not None and method not in ("momo", "cash", "bank"):
@@ -101,6 +118,10 @@ def record_pay_period(
                 "deductions": deductions_rwf, "due": due_on, "method": method,
             },
         ).scalar_one()
+
+        for line in lines:
+            _add_deduction_line(session, pay_id, line)
+
         savepoint.commit()
     except Exception as exc:  # noqa: BLE001 -- re-raised as a domain error
         savepoint.rollback()
@@ -111,6 +132,84 @@ def record_pay_period(
             ) from exc
         raise
     return pay_id
+
+
+DEDUCTION_KINDS = ("advance", "uniform", "equipment", "transport",
+                   "absence", "statutory", "damage", "other")
+
+# The two most open to abuse. A deduction for "damage" with no written
+# account of what was damaged is exactly what itemising is meant to prevent.
+NEEDS_EXPLANATION = ("damage", "other")
+
+
+def _add_deduction_line(session: Session, pay_id: UUID, line: dict) -> None:
+    kind = str(line.get("kind", "")).strip()
+    amount = int(line.get("amount_rwf", 0))
+    note = (line.get("note") or "").strip() or None
+
+    if kind not in DEDUCTION_KINDS:
+        raise PayError(f"deduction kind must be one of {DEDUCTION_KINDS}")
+    if amount <= 0:
+        raise PayError("a deduction line must be a positive amount")
+    if kind in NEEDS_EXPLANATION and (note is None or len(note) < 10):
+        raise PayError(
+            f"a '{kind}' deduction needs a written reason -- say what it was "
+            "for, in enough words that the worker could dispute it"
+        )
+
+    session.execute(
+        text(
+            """
+            INSERT INTO pay_deductions (pay_id, kind, amount_rwf, note,
+                                        recorded_by)
+            VALUES (:pid, :kind, :amount, :note, current_staff_id())
+            """
+        ),
+        {"pid": str(pay_id), "kind": kind, "amount": amount, "note": note},
+    )
+
+
+def deduction_lines(session: Session, pay_id: UUID) -> list[dict]:
+    """What was taken off, and why."""
+    return [
+        dict(row)
+        for row in session.execute(
+            text(
+                """
+                SELECT pd.kind, pd.amount_rwf, pd.note, pd.recorded_at,
+                       s.full_name AS recorded_by_name
+                  FROM pay_deductions pd
+                  LEFT JOIN staff s ON s.staff_id = pd.recorded_by
+                 WHERE pd.pay_id = :pid
+                 ORDER BY pd.amount_rwf DESC
+                """
+            ),
+            {"pid": str(pay_id)},
+        ).mappings()
+    ]
+
+
+def pay_variances(session: Session, placement_id: UUID | None = None) -> list[dict]:
+    """Pay recorded below what confirmed attendance implies.
+
+    Not proof of anything on its own -- rates change, half days happen -- but
+    it is the question worth asking before the money moves rather than after.
+    """
+    return [
+        dict(row)
+        for row in session.execute(
+            text(
+                """
+                SELECT * FROM v_pay_expected
+                 WHERE variance_rwf IS NOT NULL AND variance_rwf < 0
+                   AND (CAST(:pid AS uuid) IS NULL
+                        OR placement_id = CAST(:pid AS uuid))
+                 ORDER BY variance_rwf
+                """
+            ),
+            {"pid": str(placement_id) if placement_id else None},
+        ).mappings()
+    ]
 
 
 def suggest_pay_period(session: Session, placement_id: UUID) -> dict | None:

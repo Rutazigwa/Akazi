@@ -28,7 +28,17 @@ class NewPayPeriod(BaseModel):
     gross_rwf: int = Field(gt=0)
     due_on: date
     deductions_rwf: int = Field(default=0, ge=0)
+    # Required whenever anything is deducted. A total with no lines is exactly
+    # what migration 040 exists to refuse.
+    deductions: list[DeductionLine] | None = None
     method: str | None = Field(default=None, pattern="^(momo|cash|bank)$")
+
+
+class DeductionLine(BaseModel):
+    kind: str = Field(pattern="^(advance|uniform|equipment|transport|absence"
+                              "|statutory|damage|other)$")
+    amount_rwf: int = Field(gt=0)
+    note: str | None = None
 
 
 class MarkPaid(BaseModel):
@@ -58,6 +68,7 @@ def create_pay_period(
             session, placement_id,
             body.period_start, body.period_end, body.gross_rwf, body.due_on,
             body.deductions_rwf, body.method,
+            deductions=[d.model_dump() for d in (body.deductions or [])] or None,
         )
     except PayError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

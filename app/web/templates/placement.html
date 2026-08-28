@@ -175,7 +175,23 @@
     <tr><th>Period</th><th class="num">Net RWF</th><th>Due</th><th>Paid</th><th>Worker confirms</th><th></th></tr>
     {% for pr in pay_records %}
     <tr>
-      <td class="small">{{ pr.period_start }} – {{ pr.period_end }}</td>
+      <td class="small">
+        {{ pr.period_start }} – {{ pr.period_end }}
+        {% if pr.deductions_rwf %}
+          <br><span class="small muted">
+            less {{ '{:,}'.format(pr.deductions_rwf) }}:
+            {% for d in (deductions.get(pr.pay_id) or []) %}
+              {{ d.kind }}{% if d.note %} ({{ d.note }}){% endif %}{% if not loop.last %}, {% endif %}
+            {% endfor %}
+          </span>
+        {% endif %}
+        {% if variances.get(pr.pay_id) %}
+          <br><span class="pill bad">
+            {{ '{:,}'.format(-variances[pr.pay_id].variance_rwf) }} below
+            {{ variances[pr.pay_id].days_present }} days at the agreed rate
+          </span>
+        {% endif %}
+      </td>
       <td class="num">{{ '{:,}'.format(pr.net_rwf) }}</td>
       <td class="small muted">{{ pr.due_on or '—' }}</td>
       <td>
@@ -219,6 +235,24 @@
                value="{{ pay_suggestion.gross_rwf if pay_suggestion and pay_suggestion.gross_rwf else '' }}" required></div>
       <div><label>Due on</label><input type="date" name="due_on" value="{{ today }}" required></div>
       <div><label>Deductions (RWF)</label><input type="number" name="deductions_rwf" min="0" value="0"></div>
+      <div>
+        <label for="deduction_kind">What for?</label>
+        <select id="deduction_kind" name="deduction_kind">
+          <option value="advance">Advance already paid</option>
+          <option value="uniform">Uniform</option>
+          <option value="equipment">Equipment</option>
+          <option value="transport">Transport (employer-arranged)</option>
+          <option value="absence">Days not worked</option>
+          <option value="statutory">Tax or social security</option>
+          <option value="damage">Damage</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div>
+        <label for="deduction_note">Reason</label>
+        <input id="deduction_note" name="deduction_note"
+               placeholder="Required for damage and other">
+      </div>
       <div><label>Method</label>
         <select name="method"><option value="">—</option>
           <option value="momo">MoMo</option><option value="cash">Cash</option>

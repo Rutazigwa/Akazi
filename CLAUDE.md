@@ -661,6 +661,36 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Money off a wage needs a stated reason
+
+`pay_records.deductions_rwf` was a bare integer. Nothing anywhere said what a
+deduction was **for**. "Whether the money moves correctly" is one of the four
+gaps, and it is not only about pay arriving late -- it is about arriving
+short.
+
+The people placed are 16-to-30-year-olds in their first formal work, with no
+payslip, no union and little bargaining power. An unexplained deduction is the
+oldest way to quietly reduce a wage, and a system that records the amount but
+not the reason is a system that helps.
+
+- **Every deduction is itemised** against a closed list of kinds. Free text
+  would become "other" for everything, and the question worth answering is
+  "what is being deducted, across all our employers", without reading a
+  thousand notes.
+- **`damage` and `other` need a written account** of at least ten characters.
+  Those are the two most open to abuse and the hardest for a worker to
+  dispute if nobody wrote down what happened.
+- **Enforced by a DEFERRABLE constraint trigger**, checked at commit rather
+  than at statement time -- the lines are necessarily written after the record
+  they belong to, so an immediate check would refuse every correct sequence.
+  A bulk import of paper payslips is held to the same rule.
+- **Removing the lines afterwards is refused too**, or the reason could be
+  deleted and the deduction kept.
+
+`v_pay_expected` sets recorded pay against what confirmed attendance implies.
+A shortfall is not proof of anything -- rates change, half days happen -- but
+it is the question worth asking before the money moves rather than after.
+
 ### The fare model was a guess driving two real decisions
 
 `app/matching/transport.py` has described its fare model as a placeholder

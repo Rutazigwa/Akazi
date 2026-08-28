@@ -67,9 +67,11 @@ from app.operations.transport import (
 from app.operations.pay import (
     PayError,
     confirm_with_worker,
+    deduction_lines,
     mark_paid,
     overdue_pay,
     pay_records_for_placement,
+    pay_variances,
     record_pay_period,
     suggest_pay_period,
 )
@@ -961,6 +963,8 @@ def placement_page(
             for m in result.matches
         ]
 
+    pay_records = pay_records_for_placement(session, placement_id)
+
     return _render(
         request, "placement.html", staff,
         p=dict(row),
@@ -968,13 +972,20 @@ def placement_page(
             lambda c: {**c, "text": render_contract(c["terms"], c["contract_ref"])}
             if c else None
         )(get_contract(session, placement_id)),
-        pay_records=pay_records_for_placement(session, placement_id),
+        pay_records=pay_records,
         pay_suggestion=suggest_pay_period(session, placement_id),
         attendance=[dict(a) for a in attendance],
         follow_ups=[dict(f) for f in follow_ups],
         # What this journey has actually cost, when anyone has said. The
         # estimate beside it is a straight line; these are receipts.
         fares=route_history(session, placement_id),
+        # Why a wage was reduced, beside the reduction itself. A total with no
+        # reason is what this exists to prevent.
+        deductions={
+            pr["pay_id"]: deduction_lines(session, pr["pay_id"])
+            for pr in pay_records if pr["deductions_rwf"]
+        },
+        variances={v["pay_id"]: v for v in pay_variances(session, placement_id)},
         replacement=dict(replacement) if replacement else None,
         hours_to_fill=(
             float(replacement["hours_to_fill"])
@@ -1106,6 +1117,18 @@ async def create_pay_period(
             date.fromisoformat(str(form["due_on"])),
             int(form.get("deductions_rwf") or 0),
             str(form.get("method") or "") or None,
+            # One line is enough for the ordinary case -- an advance, a
+            # uniform. More than one is rare and can be recorded through the
+            # API. What matters is that zero is not an option when money is
+            # being taken off. See migration 040.
+            deductions=(
+                [{
+                    "kind": str(form.get("deduction_kind") or "other"),
+                    "amount_rwf": int(form.get("deductions_rwf") or 0),
+                    "note": str(form.get("deduction_note") or "") or None,
+                }]
+                if int(form.get("deductions_rwf") or 0) else None
+            ),
         )
     except (PayError, ValueError) as exc:
         return _back(f"/ui/placements/{placement_id}", str(exc), "err")
