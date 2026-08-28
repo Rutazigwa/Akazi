@@ -226,16 +226,15 @@ def _hard_exclusions(c: Candidate, r: WorkRequest) -> str | None:
 
 
 def _transport_viability(c: Candidate, r: WorkRequest) -> str | None:
-    """The filter that prevents most 30-day dropouts."""
-    if r.transport_covered:
-        return None
+    """The filter that prevents most 30-day dropouts.
 
-    if c.max_commute_rwf is not None and c.est_transport_rwf > c.max_commute_rwf:
-        return (
-            f"transport RWF {c.est_transport_rwf}/day exceeds the candidate's "
-            f"ceiling of RWF {c.max_commute_rwf}"
-        )
-
+    An employer covering transport answers the money, and only the money. It
+    does not make the journey shorter: somebody who says they cannot travel
+    more than 45 minutes has told us something about their life -- childcare,
+    a second job, getting home before dark -- not about their wallet. Placing
+    them on a 90-minute commute because the fare is paid produces exactly the
+    week-two departure this filter exists to prevent.
+    """
     if (
         c.max_commute_min is not None
         and c.est_commute_min is not None
@@ -244,6 +243,16 @@ def _transport_viability(c: Candidate, r: WorkRequest) -> str | None:
         return (
             f"commute {c.est_commute_min} min exceeds the candidate's "
             f"ceiling of {c.max_commute_min} min"
+        )
+
+    # Everything below is about cost, and cost is what the employer covers.
+    if r.transport_covered:
+        return None
+
+    if c.max_commute_rwf is not None and c.est_transport_rwf > c.max_commute_rwf:
+        return (
+            f"transport RWF {c.est_transport_rwf}/day exceeds the candidate's "
+            f"ceiling of RWF {c.max_commute_rwf}"
         )
 
     daily_pay = r.daily_pay_rwf()

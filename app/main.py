@@ -17,6 +17,7 @@ from app.routers import (
     catalogue,
     cohorts,
     data_rights,
+    follow_up_reports,
     identity,
     inbound,
     lmis,
@@ -46,6 +47,7 @@ app.include_router(identity.router)
 app.include_router(catalogue.router)
 app.include_router(cohorts.router)
 app.include_router(data_rights.router)
+app.include_router(follow_up_reports.router)
 app.include_router(registry.router)
 app.include_router(requests.router)
 app.include_router(inbound.router)

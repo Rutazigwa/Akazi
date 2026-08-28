@@ -332,3 +332,24 @@ def test_reported_fares_are_shown_beside_what_we_guessed(web, session,
     page = web.get(f"/ui/placements/{placement_id}").text
     assert "What the journey actually costs" in page
     assert "1,400" in page and "900" in page
+
+
+def test_a_fare_can_be_recorded_through_the_api(client, make_placement):
+    """The browser form was the only way in. A bulk import of paper follow-up
+    sheets needs one too, and a capability in one surface and not the other is
+    a divergence that grows."""
+    placement_id = make_placement(transport_rwf=800)
+    recorded = client.post(f"/placements/{placement_id}/transport",
+                           json={"reported_rwf": 1400, "reported_min": 25})
+    assert recorded.status_code == 201, recorded.text
+
+    reports = client.get(f"/placements/{placement_id}/transport").json()
+    assert reports["reports"][0]["reported_rwf"] == 1400
+    assert reports["calibration"]["reports"] == 1
+
+
+def test_the_api_refuses_an_implausible_fare_too(client, make_placement):
+    refused = client.post(f"/placements/{make_placement()}/transport",
+                          json={"reported_rwf": 45000})
+    assert refused.status_code == 422
+    assert "implausible" in refused.json()["detail"]

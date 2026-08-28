@@ -63,33 +63,58 @@ if any(existing):
 api = httpx.Client(base_url=B, follow_redirects=True, timeout=30)
 
 
-def post(path: str, payload: dict, expect: tuple[int, ...] = (200, 201)):
+def webhook(payload: dict) -> None:
+    """The inbound webhook, which authenticates with a shared secret rather
+    than a staff token. Checked like everything else."""
+    # 202, not 200: the endpoint accepts the message and processes it
+    # afterwards, which is the honest status for that.
+    response = api.post("/webhooks/inbound", json=payload,
+                        headers={"X-Webhook-Secret": "shared-secret"})
+    if response.status_code != 202:
+        print(f"  ! webhook -> {response.status_code} "
+              f"{str(response.json())[:110]}", file=sys.stderr)
+
+
+def post(path: str, payload: dict | None = None,
+         expect: tuple[int, ...] = (200, 201), quiet: bool = False):
     """POST and complain loudly about anything unexpected.
 
     Every call here used to ignore its status code, and one of them had been
     posting to a route that does not exist since the seeder was written --
     404, silently, so no placement in the demo was ever completed and the
-    retention and pay history were quietly thin. A seeder that swallows
-    failures produces a demo missing the thing it was meant to show.
+    retention and pay figures were quietly thin.
+
+    A seeder that swallows failures produces a demo missing the thing it was
+    meant to show, and the first anyone knows is somebody looking at a screen
+    wondering where the data went. `quiet` is for the handful of calls whose
+    refusal is the point -- an offer the matcher rightly rejects -- and those
+    still report through their own path.
     """
     response = api.post(path, json=payload, headers=H)
-    if response.status_code not in expect:
+    if response.status_code not in expect and not quiet:
         print(f"  ! POST {path} -> {response.status_code} "
               f"{str(response.json())[:110]}", file=sys.stderr)
     return response
 
 
-tok = api.post("/auth/login", json={"phone": args.phone,
-       "password": args.password}).json()["token"]
-H = {"Authorization": f"Bearer {tok}"}
-sec = api.post("/auth/totp/enrol", headers=H).json()["secret"]
-api.post("/auth/totp/confirm", json={"code": pyotp.TOTP(sec).now()}, headers=H)
-api.post("/auth/mfa", json={"code": pyotp.TOTP(sec).at(int(time.time()) + 30)}, headers=H)
+# Signing in comes before the authenticated helper can exist, so it checks
+# itself. A wrong password here would otherwise fail forty calls later with
+# something unrelated.
+signin = api.post("/auth/login",
+                  json={"phone": args.phone, "password": args.password})
+if signin.status_code != 200:
+    sys.exit(f"could not sign in as {args.phone}: {signin.status_code} "
+             f"{str(signin.json())[:120]}")
+H = {"Authorization": f"Bearer {signin.json()['token']}"}
 
-api.post("/staff", json={"full_name": "Chantal Mukamana", "phone": "+250780002222",
-         "role": "coordinator", "can_view_identity": True}, headers=H)
-api.post("/staff", json={"full_name": "Eric Habimana", "phone": "+250780003333",
-         "role": "supervisor", "can_view_identity": False}, headers=H)
+sec = post("/auth/totp/enrol").json()["secret"]
+post("/auth/totp/confirm", {"code": pyotp.TOTP(sec).now()})
+post("/auth/mfa", {"code": pyotp.TOTP(sec).at(int(time.time()) + 30)})
+
+post("/staff", {"full_name": "Chantal Mukamana", "phone": "+250780002222",
+         "role": "coordinator", "can_view_identity": True})
+post("/staff", {"full_name": "Eric Habimana", "phone": "+250780003333",
+         "role": "supervisor", "can_view_identity": False})
 
 # --- the catalogue --------------------------------------------------------
 skills = {}
@@ -101,14 +126,14 @@ for code, name, cat, rubric, pas in [
     ("deep_cleaning", "Deep cleaning", "cleaning",
      "1 surface wipe only; 3 correct products, correct order; 4 leaves a checked, signed-off room", 3),
 ]:
-    sid = api.post("/skills", json={"skill_code": code, "skill_name": name,
-                   "category": cat}, headers=H).json()["skill_id"]
+    sid = post("/skills", {"skill_code": code, "skill_name": name,
+                   "category": cat}).json()["skill_id"]
     skills[code] = sid
-    api.post("/assessments", json={"skill_id": sid,
+    post("/assessments", {"skill_id": sid,
              "title": f"{name}, observed", "method": "observed",
-             "pass_score": pas, "max_score": 5, "rubric": rubric}, headers=H)
-api.post("/skills", json={"skill_code": "forklift", "skill_name": "Forklift operation",
-         "category": "logistics"}, headers=H)
+             "pass_score": pas, "max_score": 5, "rubric": rubric})
+post("/skills", {"skill_code": "forklift", "skill_name": "Forklift operation",
+         "category": "logistics"})
 
 assessments = {a["skill_code"]: a for a in api.get("/assessments", headers=H).json()["assessments"]}
 
@@ -121,19 +146,17 @@ for name, sector, coop, lat, lng, tier in [
     ("Café Kivu", "hospitality", False, -1.9490, 30.0920, "active"),
     ("Gasabo Facilities Ltd", "cleaning", False, -1.9600, 30.1300, "pilot"),
 ]:
-    eid = api.post("/employers", json={"business_name": name, "sector": sector,
+    eid = post("/employers", {"business_name": name, "sector": sector,
            "district": "Gasabo", "site_lat": lat, "site_lng": lng,
-           "is_cooperative": coop}, headers=H).json()["employer_id"]
+           "is_cooperative": coop}).json()["employer_id"]
     api.patch(f"/employers/{eid}", json={"tier": tier}, headers=H)
     contact_phone = f"+2507888{abs(hash(name)) % 90000 + 10000}"
-    contact = api.post(f"/employers/{eid}/contacts", json={
+    contact = post(f"/employers/{eid}/contacts", {
         "full_name": "Site manager", "phone": contact_phone,
-        "role_title": "Site manager", "is_primary": True}, headers=H).json()
+        "role_title": "Site manager", "is_primary": True}).json()
     # A login for the employer dashboard, so the other half of the system can
     # actually be shown. The password is generated and returned once.
-    invited = api.post(
-        f"/employers/{eid}/contacts/{contact['contact_id']}/invite", headers=H
-    ).json()
+    invited = post(f"/employers/{eid}/contacts/{contact['contact_id']}/invite").json()
     logins.append((name, contact_phone, invited["temporary_password"]))
     employers[name] = eid
 
@@ -149,7 +172,7 @@ people = [
 ]
 cands = {}
 for first, last, gender, lat, lng, phone_ok, commute, dob in people:
-    r = api.post("/candidates", json={
+    r = post("/candidates", {
         "legal_first_name": first, "legal_last_name": last,
         "date_of_birth": dob, "phone_primary": f"+25078{abs(hash(first+last))%900000+100000}",
         "display_name": f"{first} {last[0]}.", "district": "Gasabo",
@@ -157,7 +180,7 @@ for first, last, gender, lat, lng, phone_ok, commute, dob in people:
         "max_commute_rwf": commute, "consent_captured_via": "whatsapp",
         "has_smartphone": phone_ok,
         "availability": [{"day_of_week": d, "start": "06:00:00", "end": "20:00:00"}
-                         for d in range(7)]}, headers=H)
+                         for d in range(7)]})
     cands[first] = r.json()["candidate_id"]
 
 # scores, so matching has something to filter and rank on
@@ -168,9 +191,8 @@ for first, code, score in [
     ("Fabrice", "food_hygiene", 3), ("Grace", "retail_greeting", 2),
     ("Honorine", "deep_cleaning", 4),
 ]:
-    api.post(f"/candidates/{cands[first]}/assessments",
-             json={"assessment_id": assessments[code]["assessment_id"],
-                   "score": score, "notes": ""}, headers=H)
+    post(f"/candidates/{cands[first]}/assessments", {"assessment_id": assessments[code]["assessment_id"],
+                   "score": score, "notes": ""})
 
 # Two partial registrations, because that is what intake actually looks like.
 # Candidates arrive over WhatsApp and a coordinator types in what they were
@@ -181,7 +203,7 @@ for first, last, gender, note in [
     ("Josiane", "Mukamurenzi", "F", "no home location, never assessed"),
     ("Patrick", "Bizimana", "M", "no availability recorded yet"),
 ]:
-    partial = api.post("/candidates", json={
+    partial = post("/candidates", {
         "legal_first_name": first, "legal_last_name": last,
         "date_of_birth": "2003-06-11",
         "phone_primary": f"+25078{abs(hash(first + last)) % 900000 + 100000}",
@@ -194,7 +216,7 @@ for first, last, gender, note in [
                               "end": "17:00:00"} for d in range(5)]}),
         **({"home_lat": -1.9525, "home_lng": 30.1290}
            if first == "Patrick" else {}),
-    }, headers=H)
+    })
     if partial.status_code == 201:
         cands[first] = partial.json()["candidate_id"]
         print(f"  partial registration: {first} {last} — {note}")
@@ -206,13 +228,13 @@ for first, last, gender, note in [
               f"{str(partial.json())[:120]}")
 
 # --- a cohort -------------------------------------------------------------
-co = api.post("/cohorts", json={"name": "Orientation — March intake",
+co = post("/cohorts", {"name": "Orientation — March intake",
       "starts_on": str(TODAY - datetime.timedelta(days=20)), "women_only": True,
-      "capacity": 12}, headers=H).json()["cohort_id"]
+      "capacity": 12}).json()["cohort_id"]
 for first in ("Aline", "Chantal", "Divine", "Grace"):
-    api.post(f"/cohorts/{co}/members", json={"candidate_id": cands[first]}, headers=H)
-    api.post(f"/cohorts/{co}/outcomes", json={"candidate_id": cands[first],
-             "outcome": "completed"}, headers=H)
+    post(f"/cohorts/{co}/members", {"candidate_id": cands[first]})
+    post(f"/cohorts/{co}/outcomes", {"candidate_id": cands[first],
+             "outcome": "completed"})
 
 
 def offer(rid, first):
@@ -221,8 +243,7 @@ def offer(rid, first):
     The transport filter is doing real work on this data -- a wage that does
     not survive the commute is refused, which is the point of it.
     """
-    r = api.post(f"/work-requests/{rid}/offers",
-                 json={"candidate_id": cands[first]}, headers=H)
+    r = post(f"/work-requests/{rid}/offers", {"candidate_id": cands[first]})
     if r.status_code != 201:
         print(f"  refused {first}: {r.json().get('detail', '')[:90]}")
         return None
@@ -231,11 +252,11 @@ def offer(rid, first):
 
 def request_for(employer, title, starts, headcount=1, pay=5000,
                 start_t="08:00:00", end_t="16:00:00", transport=False):
-    return api.post("/work-requests", json={
+    return post("/work-requests", {
         "employer_id": employers[employer], "title": title, "work_type": "shift",
         "headcount": headcount, "starts_on": str(starts), "shift_start": start_t,
         "shift_end": end_t, "pay_rwf": pay, "pay_unit": "day",
-        "transport_covered": transport}, headers=H).json()["request_id"]
+        "transport_covered": transport}).json()["request_id"]
 
 
 # --- history: completed placements, so the metrics are not empty ----------
@@ -247,29 +268,51 @@ for first, employer, title in [("Aline", "Kimironko Market Stores", "Shop assist
                                ("Fabrice", "Café Kivu", "Kitchen assistant")]:
     rid = request_for(employer, title, past, pay=6500, transport=True)
     pid = offer(rid, first)
-    api.post(f"/placements/{pid}/response", json={"accepted": True}, headers=H)
-    api.post(f"/placements/{pid}/start", json={"started_on": str(past)}, headers=H)
+    post(f"/placements/{pid}/response", {"accepted": True})
+    post(f"/placements/{pid}/start", {"started_on": str(past)})
     for d in range(0, 20, 4):
-        api.post(f"/placements/{pid}/attendance", json={
+        post(f"/placements/{pid}/attendance", {
             "work_date": str(past + datetime.timedelta(days=d)), "present": True,
-            "confirmed_by": "employer"}, headers=H)
+            "confirmed_by": "employer"})
     post(f"/placements/{pid}/complete",
          {"ended_on": str(past + datetime.timedelta(days=20))})
-    pay_id = api.post(f"/placements/{pid}/pay", json={
+    pay_id = post(f"/placements/{pid}/pay", {
         "period_start": str(past), "period_end": str(past + datetime.timedelta(days=20)),
-        "gross_rwf": 110000, "due_on": str(past + datetime.timedelta(days=22))}, headers=H).json().get("pay_id")
+        "gross_rwf": 110000, "due_on": str(past + datetime.timedelta(days=22))}).json().get("pay_id")
     if pay_id:
-        api.post(f"/pay/{pay_id}/paid", json={"paid_on": str(past + datetime.timedelta(days=22)),
-                 "method": "momo"}, headers=H)
-        api.post(f"/pay/{pay_id}/worker-confirmation",
-                 json={"received_in_full": True}, headers=H)
+        post(f"/pay/{pay_id}/paid", {"paid_on": str(past + datetime.timedelta(days=22)),
+                 "method": "momo"})
+        post(f"/pay/{pay_id}/worker-confirmation", {"received_in_full": True})
 
 # Work the historical follow-ups, so 30-day retention is a real figure rather
 # than a dash. day_30 with still_working is what the metric reads.
 for f in api.get("/follow-ups/due", params={"as_of": str(TODAY)}, headers=H).json().get("due", []):
-    api.post(f"/follow-ups/{f['follow_up_id']}/complete",
-             json={"still_working": True, "worker_rating": 4,
-                   "employer_rating": 4}, headers=H)
+    post(f"/follow-ups/{f['follow_up_id']}/complete", {"still_working": True, "worker_rating": 4,
+                   "employer_rating": 4})
+
+# What the follow-up call actually collects, beyond "still working": the fare
+# the journey really cost, and whether she felt safe. Both displace guesses
+# that decide who gets offered work, and a demo without them shows a system
+# that is still guessing.
+with psycopg.connect(DSN) as c:
+    finished = c.execute(
+        "SELECT p.placement_id, p.est_transport_rwf, c.display_name, c.gender "
+        "  FROM placements p JOIN candidates c USING (candidate_id) "
+        " WHERE p.status = 'completed'").fetchall()
+
+for i, (pid, estimated, name, gender) in enumerate(finished):
+    # Real fares run above a straight-line estimate: roads bend, and people
+    # change moto twice.
+    post(f"/placements/{pid}/transport",
+         {"reported_rwf": int((estimated or 600) * 1.7), "reported_min": 22})
+
+    # Mostly fine, with one report that is not. That one is the reason the
+    # feature exists.
+    felt_safe = i != 1
+    post(f"/placements/{pid}/safety",
+         {"felt_safe": felt_safe, "would_return": felt_safe,
+          **({} if felt_safe else {"concern": "unsafe_hours",
+                                   "note": "asked to stay past the shift end"})})
 
 # reorders: the same employers coming back
 for employer, title in [("Kimironko Market Stores", "Shop assistant"),
@@ -280,33 +323,44 @@ for employer, title in [("Kimironko Market Stores", "Shop assistant"),
 rid = request_for("Gasabo Facilities Ltd", "Office clean", TODAY, pay=5000)
 pid = offer(rid, "Fabrice")
 if pid:
-    api.post(f"/placements/{pid}/response", json={"accepted": True}, headers=H)
-    api.post(f"/placements/{pid}/start", json={"started_on": str(TODAY)}, headers=H)
-    api.post(f"/placements/{pid}/attendance", json={"work_date": str(TODAY),
+    post(f"/placements/{pid}/response", {"accepted": True})
+    post(f"/placements/{pid}/start", {"started_on": str(TODAY)})
+    post(f"/placements/{pid}/attendance", {"work_date": str(TODAY),
              "present": False, "confirmed_by": "employer",
-             "absence_reason": "did not arrive, phone off"}, headers=H)
+             "absence_reason": "did not arrive, phone off"})
 
 # --- overdue pay ----------------------------------------------------------
-rid = request_for("Isuku Cooperative", "Weekend deep clean", TODAY - datetime.timedelta(days=12), pay=6000)
+# Transport covered here too. Once the reported fares went in, the matcher
+# refused this pairing: Divine's real fare to Isuku is RWF 2,550 against her
+# stated ceiling of 2,200, so the placement was never affordable for her and
+# the straight-line estimate had been hiding it. That refusal is the loop
+# working -- underestimating is what puts somebody in a job that costs them
+# money -- and the answer is for the employer to carry the fare, not for us to
+# quietly place her anyway.
+rid = request_for("Isuku Cooperative", "Weekend deep clean",
+                  TODAY - datetime.timedelta(days=12), pay=6000, transport=True)
 pid = offer(rid, "Divine")
 if pid:
-    api.post(f"/placements/{pid}/response", json={"accepted": True}, headers=H)
-    api.post(f"/placements/{pid}/start", json={"started_on": str(TODAY - datetime.timedelta(days=12))}, headers=H)
-    api.post(f"/placements/{pid}/pay", json={
+    post(f"/placements/{pid}/response", {"accepted": True})
+    post(f"/placements/{pid}/start", {"started_on": str(TODAY - datetime.timedelta(days=12))})
+    post(f"/placements/{pid}/pay", {
         "period_start": str(TODAY - datetime.timedelta(days=12)),
         "period_end": str(TODAY - datetime.timedelta(days=5)),
-        "gross_rwf": 42000, "due_on": str(TODAY - datetime.timedelta(days=3))}, headers=H)
+        "gross_rwf": 42000, "due_on": str(TODAY - datetime.timedelta(days=3))})
 
 # --- tomorrow -------------------------------------------------------------
+# Transport covered, because the reported fares above showed the real cost is
+# well over the estimate. That is what an employer does once they know, and it
+# is the blueprint's own lever -- the cost moves to the party who can absorb it.
 rid = request_for("Café Kivu", "Morning barista", TOMORROW, headcount=1, pay=7000,
-                  start_t="07:00:00", end_t="13:00:00")
+                  start_t="07:00:00", end_t="13:00:00", transport=True)
 pid = offer(rid, "Chantal")   # left unaccepted on purpose
 
 rid = request_for("Kimironko Market Stores", "Shop assistant", TOMORROW, pay=7000,
-                  start_t="09:00:00", end_t="17:00:00")
+                  start_t="09:00:00", end_t="17:00:00", transport=True)
 pid = offer(rid, "Divine")   # Divine has no smartphone
 if pid:
-    api.post(f"/placements/{pid}/response", json={"accepted": True}, headers=H)
+    post(f"/placements/{pid}/response", {"accepted": True})
 
 # nobody assigned at all
 request_for("Gasabo Facilities Ltd", "Night guard", TOMORROW, headcount=2, pay=6000,
@@ -315,32 +369,30 @@ request_for("Gasabo Facilities Ltd", "Night guard", TOMORROW, headcount=2, pay=6
 # --- an open request to match against ------------------------------------
 rid = request_for("Isuku Cooperative", "Office cleaning team", TODAY + datetime.timedelta(days=3),
                   headcount=2, pay=5500, transport=True)
-api.post(f"/work-requests/{rid}/skills", json={"skill_code": "deep_cleaning",
-         "min_score": 3}, headers=H)
+post(f"/work-requests/{rid}/skills", {"skill_code": "deep_cleaning",
+         "min_score": 3})
 
 # --- an inbound harassment report, escalated ------------------------------
 with psycopg.connect(DSN) as c:
     phone = c.execute("SELECT phone_primary FROM candidate_identity ci "
                       "JOIN candidates cc USING (candidate_id) "
                       "WHERE cc.display_name LIKE 'Grace%'").fetchone()[0]
-api.post("/webhooks/inbound", json={"from_phone": phone,
+webhook({"from_phone": phone,
          "body": "the supervisor keeps shouting at me and it made me feel uncomfortable",
-         "provider_ref": "wa-demo-1"}, headers={"X-Webhook-Secret": "shared-secret"})
+         "provider_ref": "wa-demo-1"})
 with psycopg.connect(DSN) as c:
     unpaid = c.execute("SELECT phone_primary FROM candidate_identity ci "
                        "JOIN candidates cc USING (candidate_id) "
                        "WHERE cc.display_name LIKE 'Divine%'").fetchone()[0]
-api.post("/webhooks/inbound", json={"from_phone": unpaid,
+webhook({"from_phone": unpaid,
          "body": "I have still not been paid for last week",
-         "provider_ref": "wa-demo-2"},
-         headers={"X-Webhook-Secret": "shared-secret"})
+         "provider_ref": "wa-demo-2"})
 # One nobody can interpret, so the "replies we could not read" queue is real.
-api.post("/webhooks/inbound", json={"from_phone": "+250788000999",
-         "body": "???", "provider_ref": "wa-demo-3"},
-         headers={"X-Webhook-Secret": "shared-secret"})
+webhook({"from_phone": "+250788000999",
+         "body": "???", "provider_ref": "wa-demo-3"})
 
 # The dispatcher runs on a cron; do the same here so the escalation exists.
-api.post("/inbound/process", headers=H)
+post("/inbound/process")
 
 print("seeded\n")
 print("Staff sign-in at /ui/login")

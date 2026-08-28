@@ -263,3 +263,26 @@ def test_it_is_collected_at_the_check_in(web, session, make_placement, woman):
     assert session.execute(
         text("SELECT count(*) FROM employer_safety_reports")
     ).scalar_one() == 1
+
+
+def test_a_safety_report_can_be_recorded_through_the_api(client,
+                                                          make_placement,
+                                                          session):
+    placement_id = make_placement()
+    recorded = client.post(f"/placements/{placement_id}/safety",
+                           json={"felt_safe": False, "concern": "unsafe_hours",
+                                 "note": "asked to stay late"})
+    assert recorded.status_code == 201, recorded.text
+
+    employer_id = session.execute(
+        text("SELECT employer_id FROM employer_safety_reports")
+    ).scalar_one()
+    summary = client.get(f"/employers/{employer_id}/safety").json()
+    assert summary["felt_unsafe"] == 1
+
+
+def test_the_api_still_requires_a_concern_when_unsafe(client, make_placement):
+    refused = client.post(f"/placements/{make_placement()}/safety",
+                          json={"felt_safe": False})
+    assert refused.status_code == 422
+    assert "what the concern was" in refused.json()["detail"]

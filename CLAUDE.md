@@ -661,6 +661,33 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### Covering transport answers the money, and only the money
+
+`_transport_viability` returned early on `transport_covered`, waiving every
+check below it -- including the candidate's **commute-time** ceiling. An
+employer paying the fare does not make the journey shorter.
+
+Somebody who says they cannot travel more than 45 minutes has told us
+something about their life: childcare, a second job, getting home before dark.
+Placing them on a 90-minute commute because the fare is paid produces exactly
+the week-two departure this filter exists to prevent. The time ceiling now
+applies whoever is paying; the cost checks are what covering waives.
+
+### A demo that does not exercise a feature hides it
+
+The seeder ignored the status code on all forty of its calls. One had been
+posting to `/placements/{id}/end` since it was written -- a route that does
+not exist -- so nothing in the demo was ever completed and the retention and
+pay figures were quietly thin.
+
+Every call now reports an unexpected status. The first clean run then showed
+something else: zero transport reports, zero safety reports, zero deductions.
+The three most distinctive things in the system were absent from the demo
+entirely, and seeding them found that **neither transport nor safety reports
+had an API route at all** -- both were reachable only through the browser
+form. A capability that exists in one surface and not the other is a
+divergence that grows.
+
 ### Silence looked exactly like success
 
 Attendance is confirmed by the employer and it is the input the whole

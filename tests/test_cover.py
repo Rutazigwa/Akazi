@@ -248,3 +248,31 @@ def test_the_cover_page_refuses_a_placement_nobody_was_absent_from(
 def test_the_dashboard_links_to_it(web, session, make_placement, employer_id):
     cover_setup(session, make_placement, employer_id)
     assert "/cover" in web.get("/ui/").text
+
+
+# --- what "employer covers transport" actually covers ---------------------
+
+def test_covering_transport_waives_the_cost_ceiling(session=None):
+    from app.matching.engine import match_candidates
+
+    c = worker("Costly", commute=10, transport_rwf=3000)
+    object.__setattr__(c, "max_commute_rwf", 1000)
+    result = match_candidates(shift(transport_covered=True), [c])
+    assert [m.candidate.display_name for m in result.matches] == ["Costly"]
+
+
+def test_covering_transport_does_not_shorten_the_journey(session=None):
+    """Somebody who says they cannot travel more than 45 minutes has told us
+    about childcare or a second job, not about their wallet. Placing them on a
+    90-minute commute because the fare is paid produces exactly the week-two
+    departure the filter exists to prevent.
+    """
+    from app.matching.engine import match_candidates
+
+    c = worker("FarAway", commute=90)
+    object.__setattr__(c, "max_commute_min", 45)
+    result = match_candidates(shift(transport_covered=True), [c])
+    assert result.matches == []
+    assert "exceeds the candidate's ceiling of 45 min" in (
+        result.rejections[0].reason
+    )
