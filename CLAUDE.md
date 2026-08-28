@@ -661,6 +661,40 @@ data**: legal names, national ID and phone numbers stay behind the audited
 read, so most staff can open the operational record without touching anything
 residency-sensitive. A test asserts that.
 
+### The rating only ran one way
+
+The employer rates the worker, and that rating is shown to them. The worker
+rated the employer at follow-up and **nothing ever read it back** -- it
+appeared in a subject access export and nowhere else. That asymmetry is the
+power imbalance the blueprint asks this business to correct, and it names the
+case that matters most: "employer safety ratings written by women who worked
+there", listed as a product requirement rather than a reporting line.
+
+A woman weighing a shift that finishes after dark at an employer she has never
+worked for is making a safety judgement with no information. Somebody else
+already has that information.
+
+**`v_employer_safety` is coordinator-facing and must never reach an
+employer.** Told that one of the two women who worked there did not feel safe,
+they know exactly who said it, and the consequence lands on her rather than on
+us. There is no threshold that makes this safe to show an employer, so none is
+offered -- and a test asserts no employer-facing module or template so much as
+names it.
+
+Internally there is no suppression, deliberately. The `MIN_CELL` rule exists
+for LMIS because those figures leave the building; these do not, and a
+coordinator can already see who worked which shift. Suppressing here would
+defeat the purpose without protecting anybody.
+
+**Nobody is blocked automatically.** Enough reports raise a warning on the
+matches page, not a refusal: declining to trade with an employer is a
+commercial decision for the owner, and a threshold invented in code would make
+it silently, on evidence a person never saw. The warning puts it in front of
+someone instead.
+
+A report of `harassment` raises the escalation immediately. It must not sit in
+a table waiting for whoever next reads a report.
+
 ### Money off a wage needs a stated reason
 
 `pay_records.deductions_rwf` was a bare integer. Nothing anywhere said what a

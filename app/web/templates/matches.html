@@ -10,6 +10,25 @@
   {% if request_row.transport_covered %} · <span class="pill good">transport covered</span>{% endif %}
 </p>
 
+{% if safety %}
+<div class="card {% if safety.warn %}urgent{% endif %}">
+  <h2 style="margin-top:0">What their workers say</h2>
+  <p class="small">{{ safety.summary }}.</p>
+  {% if safety.warn %}
+  <p class="small" style="color:var(--bad)">
+    Enough women who worked here have said they did not feel safe that this
+    should be raised with the owner before another woman is placed. Nobody is
+    blocked automatically — that is a commercial decision, and it should be
+    made by a person who has seen this.
+  </p>
+  {% endif %}
+  <p class="small muted">
+    Never shown to the employer. Told that one of two women did not feel safe,
+    they would know exactly who said it, and the consequence would land on her.
+  </p>
+</div>
+{% endif %}
+
 <div class="card">
   <h2 style="margin-top:0">Required skills</h2>
   {% if requirements %}

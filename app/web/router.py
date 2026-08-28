@@ -59,6 +59,11 @@ from app.operations.catalogue import (
 from app.operations.follow_ups import complete_follow_up, due_follow_ups
 from app.operations.jobs import backup_status, messaging_status
 from app.operations.readiness import shifts_on, unstaffed_shifts_on
+from app.operations.safety import (
+    SafetyReportError,
+    employer_safety,
+    record_safety_report,
+)
 from app.operations.transport import (
     TransportReportError,
     record_transport_report,
@@ -833,6 +838,11 @@ def request_matches(
     if row is None:
         return _back("/ui/requests", "No such request", "err")
 
+    employer_of_request = session.execute(
+        text("SELECT employer_id FROM work_requests WHERE request_id = :rid"),
+        {"rid": str(request_id)},
+    ).scalar_one()
+
     result = find_matches(session, request_id)
     placements = session.execute(
         text(
@@ -871,6 +881,10 @@ def request_matches(
         # excluded by "the skill filter" and no way to learn what the filter
         # is, which is the question an employer asks them next.
         requirements=request_requirements(session, request_id),
+        # What this employer's own workers have said about them. Shown before
+        # anyone is offered the shift, because after is too late -- and shown
+        # to the coordinator only. See migration 041.
+        safety=employer_safety(session, employer_of_request),
         scoreable_skills=[
             s for s in list_skills(session) if s["assessment_count"] > 0
         ],
@@ -1186,6 +1200,8 @@ def complete(
     still_working: Annotated[str, Form()],
     issue_flag: Annotated[str, Form()] = "",
     transport_rwf: Annotated[str, Form()] = "",
+    felt_safe: Annotated[str, Form()] = "",
+    safety_concern: Annotated[str, Form()] = "",
 ):
     complete_follow_up(
         session,
@@ -1207,6 +1223,21 @@ def complete(
     # journey is fresh. Until this was collected, the fare model was a
     # straight line, and it decides both who is offered work and the net
     # earnings figure that goes in front of a funder. See migration 039.
+    # Asked in the same call. The employer's rating of the worker has always
+    # been visible; hers of them was collected and never read. See 041.
+    if felt_safe and placement_id:
+        try:
+            with session.begin_nested():
+                record_safety_report(
+                    session, placement_id=placement_id,
+                    felt_safe=felt_safe == "true",
+                    concern=safety_concern or None,
+                    recorded_by=staff.staff_id,
+                )
+        except SafetyReportError as exc:
+            return _back(target, f"Check-in recorded, but not the answer: {exc}",
+                         "err")
+
     if transport_rwf.strip() and placement_id:
         try:
             with session.begin_nested():
