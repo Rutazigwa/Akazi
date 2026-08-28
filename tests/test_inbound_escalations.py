@@ -392,3 +392,100 @@ def test_the_webhook_requires_its_secret(api, monkeypatch):
     # Unconfigured: 503 rather than accepting unauthenticated posts.
     assert r.status_code in (401, 503)
     assert get_settings().inbound_webhook_secret is None
+
+
+# --- a flag raised on a call carries what was said -------------------------
+
+def test_a_harassment_flag_without_a_note_is_refused(session, make_placement):
+    """The escalation would be raised with no account of what happened -- so
+    whoever picks it up, with a response clock running, has to telephone the
+    coordinator back to find out. Same rule as a damage deduction: the flag is
+    the category, the note is the thing somebody has to answer.
+    """
+    from app.operations.follow_ups import FollowUpError, complete_follow_up
+
+    placement_id = make_placement()
+    follow_up_id = session.execute(
+        text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
+             "VALUES (:p, 'day_1', CURRENT_DATE) RETURNING follow_up_id"),
+        {"p": str(placement_id)},
+    ).scalar_one()
+
+    with pytest.raises(FollowUpError, match="needs a note"):
+        complete_follow_up(session, follow_up_id, True, issue_flag="harassment")
+
+
+def test_a_flagged_call_reaches_the_owner_with_its_detail(session,
+                                                          make_placement,
+                                                          staff_id):
+    from app.operations.follow_ups import complete_follow_up
+
+    placement_id = make_placement()
+    follow_up_id = session.execute(
+        text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
+             "VALUES (:p, 'day_1', CURRENT_DATE) RETURNING follow_up_id"),
+        {"p": str(placement_id)},
+    ).scalar_one()
+
+    complete_follow_up(session, follow_up_id, True, issue_flag="harassment",
+                       notes="supervisor made comments about her appearance")
+
+    detail = session.execute(
+        text("SELECT detail FROM escalations WHERE kind = 'harassment'")
+    ).scalar_one()
+    assert "comments about her appearance" in detail
+
+
+def test_an_ordinary_flag_still_needs_no_note(session, make_placement):
+    """Only the ones that raise an escalation. A transport note is useful and
+    a transport flag with none is not a safeguard failing."""
+    from app.operations.follow_ups import complete_follow_up
+
+    placement_id = make_placement()
+    follow_up_id = session.execute(
+        text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
+             "VALUES (:p, 'day_1', CURRENT_DATE) RETURNING follow_up_id"),
+        {"p": str(placement_id)},
+    ).scalar_one()
+    complete_follow_up(session, follow_up_id, True, issue_flag="transport")
+    assert session.execute(
+        text("SELECT count(*) FROM escalations")
+    ).scalar_one() == 0
+
+
+def test_the_form_offers_somewhere_to_write_it(web, session, make_placement):
+    """A rule enforced in the operation and unreachable in the form is just a
+    way to make the page fail."""
+    placement_id = make_placement()
+    session.execute(
+        text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
+             "VALUES (:p, 'day_1', CURRENT_DATE)"),
+        {"p": str(placement_id)},
+    )
+    page = web.get(f"/ui/placements/{placement_id}").text
+    assert 'name="notes"' in page
+
+
+def test_the_page_says_why_when_it_refuses(web, session, make_placement):
+    from tests.conftest import csrf
+
+    placement_id = make_placement()
+    session.execute(
+        text("INSERT INTO follow_ups (placement_id, checkpoint, due_on) "
+             "VALUES (:p, 'day_1', CURRENT_DATE)"),
+        {"p": str(placement_id)},
+    )
+    follow_up_id = session.execute(
+        text("SELECT follow_up_id FROM follow_ups WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    ).scalar_one()
+
+    page = web.get(f"/ui/placements/{placement_id}").text
+    refused = web.post(f"/ui/follow-ups/{follow_up_id}/complete",
+                       data={"csrf_token": csrf(page), "still_working": "true",
+                             "issue_flag": "harassment"},
+                       follow_redirects=True)
+    assert "needs a note" in refused.text
+    assert session.execute(
+        text("SELECT count(*) FROM escalations")
+    ).scalar_one() == 0

@@ -58,7 +58,11 @@ from app.operations.catalogue import (
     list_assessments,
     list_skills,
 )
-from app.operations.follow_ups import complete_follow_up, due_follow_ups
+from app.operations.follow_ups import (
+    FollowUpError,
+    complete_follow_up,
+    due_follow_ups,
+)
 from app.operations.jobs import backup_status, messaging_status
 from app.operations.readiness import shifts_on, unstaffed_shifts_on
 from app.operations.readiness_queue import (
@@ -1230,16 +1234,27 @@ def complete(
     staff: CsrfStaffDep,
     still_working: Annotated[str, Form()],
     issue_flag: Annotated[str, Form()] = "",
+    notes: Annotated[str, Form()] = "",
     transport_rwf: Annotated[str, Form()] = "",
     felt_safe: Annotated[str, Form()] = "",
     safety_concern: Annotated[str, Form()] = "",
 ):
-    complete_follow_up(
-        session,
-        follow_up_id,
-        still_working == "true",
-        issue_flag=issue_flag or None,
-    )
+    try:
+        with session.begin_nested():
+            complete_follow_up(
+                session,
+                follow_up_id,
+                still_working == "true",
+                issue_flag=issue_flag or None,
+                notes=notes.strip() or None,
+            )
+    except FollowUpError as exc:
+        placement = session.execute(
+            text("SELECT placement_id FROM follow_ups WHERE follow_up_id = :fid"),
+            {"fid": str(follow_up_id)},
+        ).scalar_one_or_none()
+        return _back(f"/ui/placements/{placement}" if placement else "/ui/",
+                     str(exc), "err")
     # Derived from the record, not from the Referer header. Referer is set by
     # whatever page submitted the form, so trusting it made this an open
     # redirect: a coordinator could be bounced to an attacker's site with a

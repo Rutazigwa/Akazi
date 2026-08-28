@@ -16,6 +16,10 @@ from sqlalchemy.orm import Session
 
 from app.operations.escalations import ALWAYS_ESCALATE
 
+
+class FollowUpError(Exception):
+    """A check-in that cannot be recorded as given."""
+
 # Days after the start date at which each check-in falls due.
 CHECKPOINT_OFFSETS: dict[str, int] = {
     "day_1": 1,
@@ -139,6 +143,18 @@ def complete_follow_up(
     # only the texted ones would mean the safeguard depends on how someone
     # happened to tell us.
     if issue_flag in ALWAYS_ESCALATE and placement_id is not None:
+        # An escalation with no account of what happened is one the owner
+        # cannot act on without telephoning the coordinator back -- on the
+        # report where the response clock is running and the blueprint
+        # promises a named path. Same rule as a damage deduction: the flag is
+        # the category, the note is the thing somebody has to answer.
+        if not (notes or "").strip():
+            raise FollowUpError(
+                f"a '{issue_flag}' flag needs a note saying what was reported. "
+                "Whoever picks this up has a response time to meet and only "
+                "what you write here to go on."
+            )
+
         from app.operations.escalations import (
             EscalationError,
             raise_escalation,

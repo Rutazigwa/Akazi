@@ -679,6 +679,27 @@ The distinction it does **not** try to detect automatically is intent:
 kind can pass by looking at nothing, and telling them apart is a judgement, so
 the list is written out rather than inferred.
 
+### An escalation with no account of what happened
+
+`ALWAYS_ESCALATE` routes a `harassment` or `safety` flag raised on a call to
+the same named path as one sent by text -- "routing only the texted ones would
+mean the safeguard depends on how someone happened to tell us." That part was
+right.
+
+But the coordinator's form had **no field for what was said**, and the handler
+passed no notes, so the escalation arrived with `detail` NULL. The owner saw
+`harassment · Grace U. · respond by 15:18` and nothing else, with a response
+clock running -- and had to telephone the coordinator back to find out what
+the report was.
+
+A flag that escalates now requires a note. Same rule as a `damage` deduction:
+**the flag is the category, the note is the thing somebody has to answer.**
+Flags that do not escalate still need none -- a transport note is useful, and
+a transport flag without one is not a safeguard failing.
+
+The form and the rule went in together. A rule enforced in the operation and
+unreachable in the form is just a way to make the page fail.
+
 ### A correction that erases what it cost us is not a correction
 
 An employer marking somebody absent by mistake must be able to fix it -- a
