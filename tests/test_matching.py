@@ -266,3 +266,56 @@ def test_filters_short_circuit_in_order():
     assert only_rejection(match_candidates(request, [both])).filter_name == (
         "hard_exclusion"
     )
+
+
+# --- an unknown fare is not a free journey ---------------------------------
+
+def test_a_candidate_with_no_estimate_is_not_told_they_net_the_full_wage():
+    """The reason is written once, at offer time, and shown to the employer
+    months later.
+
+    est_transport_rwf was coerced to 0 whenever no estimate existed, so a
+    candidate with no home location on file was described as
+    "net RWF 1200/day after transport" -- the headline metric of this business,
+    asserted from a number nobody had measured.
+    """
+    request = make_request(pay_rwf=1200, transport_covered=False)
+    result = match_candidates(request, [make_candidate(est_transport_rwf=None)])
+
+    assert len(result.matches) == 1, "a missing address must not exclude anyone"
+    reason = result.matches[0].reason
+    assert "net RWF" not in reason, f"asserted a net wage with no fare: {reason}"
+    assert "not estimated" in reason
+
+
+def test_a_measured_fare_of_zero_still_reports_a_net_wage():
+    """Guards the guard.
+
+    Separating "unknown" from "zero" must not silence the genuine zero case --
+    a worker who walks to the site really does net the whole wage, and that is
+    worth saying.
+    """
+    request = make_request(pay_rwf=1200, transport_covered=False)
+    reason = match_candidates(
+        request, [make_candidate(est_transport_rwf=0)]
+    ).matches[0].reason
+    assert "net RWF 1200/day after transport" in reason
+
+
+def test_an_unknown_fare_passes_the_filter_by_decision_not_by_arithmetic():
+    """It passes deliberately, not because 0 is under every ceiling.
+
+    The distinction matters: if the filter is ever tightened to exclude
+    unestimated candidates, that must be a decision someone makes, not a
+    consequence of a default value nobody chose.
+    """
+    request = make_request(pay_rwf=1000, transport_covered=False)
+    unknown = make_candidate(est_transport_rwf=None, max_commute_rwf=50)
+    assert len(match_candidates(request, [unknown]).matches) == 1
+
+    # ...while a real fare over the same ceiling is still refused, and says so
+    refused = only_rejection(
+        match_candidates(request, [make_candidate(est_transport_rwf=200,
+                                                  max_commute_rwf=50)])
+    )
+    assert "ceiling" in refused.reason

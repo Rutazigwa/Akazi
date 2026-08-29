@@ -27,12 +27,16 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import pathlib
 import sys
 import time
 
 import httpx2 as httpx
 import psycopg
 import pyotp
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from app.clock import kigali_today  # noqa: E402
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("base_url", help="the running application, e.g. http://localhost:8000")
@@ -45,7 +49,11 @@ args = parser.parse_args()
 
 B = args.base_url
 DSN = args.dsn
-TODAY = datetime.date.today()
+# Kigali's date, not the server's. The application decides what "tomorrow"
+# means with kigali_today(); a seeder using the server's date disagrees with it
+# for two hours every evening, and the demo those two hours produce has an
+# empty Tomorrow page -- in front of the employer it was built to convince.
+TODAY = kigali_today()
 TOMORROW = TODAY + datetime.timedelta(days=1)
 
 # The guard. Invented people with invented national identifiers must never
@@ -61,6 +69,27 @@ if any(existing):
     )
 
 api = httpx.Client(base_url=B, follow_redirects=True, timeout=30)
+
+# The second guard, and it is here rather than at the first webhook call for a
+# reason: the inbound messages are seeded last. Without INBOUND_WEBHOOK_SECRET
+# the server returns 503, and the operator learns their demo has no candidate
+# replies and no escalation history only after everything else has been built.
+# A precondition discovered at the end is a precondition checked too late.
+_probe = api.post("/webhooks/inbound", json={"from": "+250780000000", "body": "probe"},
+                  headers={"X-Webhook-Secret": "shared-secret"})
+if _probe.status_code == 503:
+    sys.exit(
+        "refusing to seed: the inbound webhook is not configured, so this would "
+        "produce a demo with no candidate replies and no escalations -- the two "
+        "things that show the operation responding. Start the application with "
+        "INBOUND_WEBHOOK_SECRET=shared-secret and run this again."
+    )
+if _probe.status_code == 401:
+    sys.exit(
+        "refusing to seed: the application's INBOUND_WEBHOOK_SECRET is set to "
+        "something other than 'shared-secret', which is what this seeder sends. "
+        "Restart it with INBOUND_WEBHOOK_SECRET=shared-secret."
+    )
 
 
 def webhook(payload: dict) -> None:

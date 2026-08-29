@@ -113,7 +113,10 @@ class Candidate:
     max_commute_min: int | None = None
     accepts_after_dark: bool = False
     has_placement_consent: bool = False
-    est_transport_rwf: int = 0
+    # None means "we have not estimated this", which is not the same as
+    # "the journey is free" and must never be rendered as though it were.
+    # A candidate with no home location on file has no estimate.
+    est_transport_rwf: int | None = None
     est_commute_min: int | None = None
     # Already committed to work that overlaps this request. Computed by the
     # repository, because it is a fact about the database rather than about
@@ -241,6 +244,12 @@ def _transport_viability(c: Candidate, r: WorkRequest) -> str | None:
     if r.transport_covered:
         return None
 
+    if c.est_transport_rwf is None:
+        # Nothing to test against. The candidate stays in -- a coordinator can
+        # still place someone whose address we have not taken -- but the
+        # reason will say the fare is unknown rather than assert a net wage.
+        return None
+
     if c.max_commute_rwf is not None and c.est_transport_rwf > c.max_commute_rwf:
         return (
             f"transport RWF {c.est_transport_rwf}/day exceeds the candidate's "
@@ -307,6 +316,12 @@ def _reason(c: Candidate, r: WorkRequest) -> str:
     daily_pay = r.daily_pay_rwf()
     if r.transport_covered:
         parts.append("employer covers transport")
+    elif c.est_transport_rwf is None:
+        # This reason is written once, at offer time, and shown to the employer
+        # months later. It said "net RWF 1200/day after transport" for a
+        # candidate whose fare had never been estimated -- a headline metric
+        # asserted from a number nobody measured. Say what is true instead.
+        parts.append("transport not estimated -- no home location on file")
     elif daily_pay and daily_pay > 0:
         net = daily_pay - c.est_transport_rwf
         parts.append(f"net RWF {net}/day after transport")

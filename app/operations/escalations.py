@@ -213,7 +213,15 @@ def open_escalations(session: Session) -> list[dict]:
 
 
 def response_performance(session: Session) -> list[dict]:
-    """Did we meet our own response times? Measured, or it decays into a form."""
+    """Did we meet our own response times? Measured, or it decays into a form.
+
+    avg_hours covers answered escalations only. It used to include the
+    unanswered ones at their elapsed-time-so-far, which meant three new
+    harassment reports that nobody had looked at pulled the average down from
+    5.00 hours to 1.25 -- the metric improved because the safeguard failed.
+    Unanswered is now its own column, alongside how long the oldest one has
+    been waiting, because an average cannot express "nobody has responded".
+    """
     rows = session.execute(
         text(
             """
@@ -221,7 +229,11 @@ def response_performance(session: Session) -> list[dict]:
                    count(*) AS raised,
                    count(*) FILTER (WHERE answered_in_time) AS in_time,
                    count(*) FILTER (WHERE overdue) AS currently_overdue,
-                   ROUND(avg(hours_to_acknowledge), 2) AS avg_hours
+                   count(*) FILTER (WHERE acknowledged_at IS NULL) AS unanswered,
+                   ROUND(avg(hours_to_acknowledge), 2) AS avg_hours,
+                   ROUND(max(hours_elapsed)
+                         FILTER (WHERE acknowledged_at IS NULL), 2)
+                       AS longest_waiting_hours
               FROM v_escalation_response
              GROUP BY kind ORDER BY kind
             """

@@ -288,7 +288,7 @@ def load_candidates(
                 max_commute_min=row["max_commute_min"],
                 accepts_after_dark=row["accepts_after_dark"],
                 has_placement_consent=row["has_placement_consent"],
-                est_transport_rwf=estimate.daily_rwf if estimate else 0,
+                est_transport_rwf=estimate.daily_rwf if estimate else None,
                 est_commute_min=estimate.commute_min if estimate else None,
                 has_conflicting_commitment=row["has_conflicting_commitment"],
                 prior_completed_with_employer=row["completed_with_employer"],
