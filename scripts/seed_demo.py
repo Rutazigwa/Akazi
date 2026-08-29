@@ -423,6 +423,45 @@ webhook({"from_phone": "+250788000999",
 # The dispatcher runs on a cron; do the same here so the escalation exists.
 post("/inbound/process")
 
+# --- give the clock somewhere to have passed ------------------------------
+#
+# Everything above happened in one run, seconds apart, so every request was
+# filled the instant it was opened and the employer dashboard reported
+# "avg days to fill: 0.0". That number is true and it is useless: an employer
+# reads 0.0 as a system with no data in it, and time to fill is one of the
+# figures the pitch turns on. The target is under 7 days -- a demo that cannot
+# show a real one is not showing the metric at all.
+#
+# So the last thing this does is move each request's opened_at back behind its
+# first offer. Only this timestamp is touched, and only after every rule has
+# already been applied on the way in -- nothing here creates a record that the
+# application would have refused.
+with psycopg.connect(DSN) as c:
+    moved = c.execute(
+        """
+        UPDATE work_requests wr
+           SET opened_at = f.offered_at - make_interval(
+                   -- 0.5 to 4.5 days, deterministic per request so a demo
+                   -- looks the same each time it is rebuilt
+                   -- mod(), not %: psycopg and SQLAlchemy both read a bare
+                   -- percent sign as a parameter placeholder, and this query
+                   -- is quoted in a test that passes it through one of them.
+                   mins => 720 + mod(('x' || substr(md5(wr.request_id::text), 1, 8))
+                                     ::bit(32)::bigint, 5760)::int)
+          FROM (SELECT p.request_id, min(p.offered_at) AS offered_at
+                  FROM placements p
+                 WHERE p.replaces_placement IS NULL
+                 GROUP BY p.request_id) f
+         WHERE f.request_id = wr.request_id
+        RETURNING wr.request_id
+        """
+    ).fetchall()
+    filled = c.execute(
+        "SELECT ROUND(avg(days_to_fill), 1), min(days_to_fill), max(days_to_fill) "
+        "FROM v_time_to_fill").fetchone()
+print(f"  time to fill across {len(moved)} filled requests: "
+      f"avg {filled[0]} days ({filled[1]}-{filled[2]})")
+
 print("seeded\n")
 print("Staff sign-in at /ui/login")
 print(f"  {args.phone} / {args.password}")

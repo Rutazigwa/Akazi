@@ -83,3 +83,70 @@ def test_an_empty_database_gets_past_the_guard(seeded_target):
     output = run(dsn)
     assert "refusing to seed" not in output
     assert "ConnectError" in output
+
+
+# --- the timestamps the demo is judged on ---------------------------------
+
+def interval_sql() -> str:
+    """The interval expression from the seeder, lifted out verbatim.
+
+    Read from the script rather than copied, so a change there fails here
+    instead of quietly leaving this testing a stale expression.
+    """
+    source = SEED.read_text()
+    start = source.index("mins => 720 +")
+    end = source.index(")::int", start) + len(")::int")
+    return " ".join(source[start:end].split("=>", 1)[1].split())
+
+
+def test_the_backdating_interval_stays_inside_the_range_it_claims(seeded_target):
+    """Between half a day and four and a half, for any request id.
+
+    A modulo arithmetic slip here does not fail loudly -- it produces a demo
+    where a shift was filled a month before it was posted, or in nine seconds,
+    and the employer looking at it draws the obvious conclusion about the rest
+    of the numbers.
+    """
+    url, _ = seeded_target
+    engine = create_engine(url, isolation_level="AUTOCOMMIT")
+    expression = interval_sql()
+    with engine.connect() as conn:
+        minutes = conn.execute(
+            text(
+                f"SELECT min(m), max(m), count(DISTINCT m) FROM ("
+                f"  SELECT ({expression}) AS m"
+                f"    FROM (SELECT gen_random_uuid() AS request_id"
+                f"            FROM generate_series(1, 500)) wr"
+                f") s"
+            )
+        ).one()
+    engine.dispose()
+
+    low, high, distinct = minutes
+    assert 720 <= low, f"a request filled in {low} minutes is not a fill time"
+    assert high <= 720 + 5760, f"{high} minutes is over the 4.5 day ceiling"
+    # Deterministic per id, but it must still vary -- one constant for every
+    # request would show every shift filled on exactly the same day.
+    assert distinct > 100, f"only {distinct} distinct intervals across 500 ids"
+
+
+def test_the_same_request_id_always_gets_the_same_interval(seeded_target):
+    """Rebuilding the demo must not reshuffle its history.
+
+    Somebody walks an employer through this twice; the numbers moving between
+    runs is the kind of small thing that costs a meeting.
+    """
+    url, _ = seeded_target
+    engine = create_engine(url, isolation_level="AUTOCOMMIT")
+    expression = interval_sql()
+    with engine.connect() as conn:
+        values = [
+            conn.execute(
+                text(f"SELECT ({expression}) FROM "
+                     f"(SELECT '11111111-2222-3333-4444-555555555555'::uuid "
+                     f"AS request_id) wr")
+            ).scalar_one()
+            for _ in range(3)
+        ]
+    engine.dispose()
+    assert len(set(values)) == 1, values
