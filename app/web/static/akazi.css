@@ -130,3 +130,35 @@ button.outline-bad    { border-color: var(--bad); color: var(--bad); }
   font-size: .85rem;
   overflow-x: auto;
 }
+
+
+/* A wide table must scroll inside itself, never drag the page sideways.
+   Coordinators work from phones in the field, and a page that scrolls
+   horizontally misaligns everything on it -- the navigation ends at the
+   viewport edge while a seven-column table runs past 700px, so the header no
+   longer sits above the content it belongs to. Below the breakpoint the table
+   becomes its own scroll container; above it, ordinary table layout. */
+@media (max-width: 700px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Something has to say that a scrolled table has more to the right. Without
+   it the columns simply are not there: this table's first phone-width screen
+   showed "raised" and "answered in time" while "overdue now" sat off the edge,
+   which is the wrong half of a safeguarding metric to hide. Two pairs of
+   gradients -- one attached to the content, one to the viewport of the scroll
+   box -- so the shadow appears only on the side that still has content. No
+   JavaScript; script-src is 'none' and stays that way. */
+@media (max-width: 700px) {
+  table {
+    background:
+      linear-gradient(to right, #fff 30%, rgba(255, 255, 255, 0)) left center / 2.5rem 100% no-repeat local,
+      linear-gradient(to left, #fff 30%, rgba(255, 255, 255, 0)) right center / 2.5rem 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(15, 23, 42, .16), rgba(15, 23, 42, 0)) left center / .9rem 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, .16), rgba(15, 23, 42, 0)) right center / .9rem 100% no-repeat scroll;
+  }
+}
