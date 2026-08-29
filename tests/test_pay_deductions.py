@@ -60,7 +60,7 @@ def test_several_reasons_can_be_given(session, make_placement):
     pay_id = pay(session, make_placement(), deductions_rwf=9500,
                  deductions=[{"kind": "advance", "amount_rwf": 8000},
                              {"kind": "uniform", "amount_rwf": 1500}])
-    assert {l["kind"] for l in deduction_lines(session, pay_id)} == {
+    assert {line["kind"] for line in deduction_lines(session, pay_id)} == {
         "advance", "uniform"}
 
 

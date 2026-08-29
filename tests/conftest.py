@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
+from app.operations.jobs import finish_run, start_run
 from sqlalchemy.orm import Session
 
 
@@ -481,3 +482,24 @@ def restricted_session(restricted_url):
     with Session(engine) as s:
         yield s
     engine.dispose()
+
+
+@pytest.fixture
+def ran_minutes_ago(session):
+    """Record a completed job run that finished N minutes ago.
+
+    Both the dispatcher heartbeat and the backup check are "did this cron
+    stop?" questions, and both need to age a run. Lives here so neither test
+    file owns it.
+    """
+    def _ran(minutes: int, job="dispatch_messages", ok=True):
+        run_id = start_run(session, job)
+        finish_run(session, run_id, ok=ok, detail={"sent": 3})
+        session.execute(
+            text("UPDATE job_runs SET started_at = now() - make_interval(mins => :m), "
+                 "finished_at = now() - make_interval(mins => :m) WHERE run_id = :r"),
+            {"m": minutes, "r": str(run_id)},
+        )
+        return run_id
+
+    return _ran
