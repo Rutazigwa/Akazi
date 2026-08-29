@@ -393,5 +393,5 @@ def test_the_erasure_flow_over_http(client, make_candidate, make_placement):
     assert done.status_code == 200
     assert client.get("/erasure-requests").json()["open"] == []
 
-    erased = client.get(f"/candidates/{cid}/identity").json()
+    erased = client.get(f"/candidates/{cid}/identity?purpose=data_request").json()
     assert erased["legal_first_name"] == "ERASED"

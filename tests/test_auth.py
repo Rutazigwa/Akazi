@@ -197,7 +197,7 @@ def test_login_over_http_does_not_leak_which_half_was_wrong(api, staff_login):
 
 def test_identity_read_is_audited(client, session, make_candidate):
     cid = make_candidate(name="Aline")
-    r = client.get(f"/candidates/{cid}/identity")
+    r = client.get(f"/candidates/{cid}/identity?purpose=support")
     assert r.status_code == 200
     assert r.json()["legal_first_name"] == "Test"
 
@@ -220,7 +220,7 @@ def test_staff_without_the_grant_cannot_read_identity(
     token = login(session, staff_login["phone"], staff_login["password"])
     api.headers["Authorization"] = f"Bearer {token}"
 
-    r = api.get(f"/candidates/{cid}/identity")
+    r = api.get(f"/candidates/{cid}/identity?purpose=support")
     assert r.status_code == 403
     assert "identity data access" in r.json()["detail"]
 
@@ -236,7 +236,7 @@ def test_a_refused_read_leaves_no_audit_row(
     )
     token = login(session, staff_login["phone"], staff_login["password"])
     api.headers["Authorization"] = f"Bearer {token}"
-    api.get(f"/candidates/{cid}/identity")
+    api.get(f"/candidates/{cid}/identity?purpose=support")
 
     reads = session.execute(
         text(

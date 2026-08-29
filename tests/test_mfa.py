@@ -105,12 +105,12 @@ def test_identity_access_needs_mfa_on_this_session(api, session, staff_login,
     assert api.get("/follow-ups/due").status_code == 200
 
     # Identity data is not.
-    blocked = api.get(f"/candidates/{cid}/identity")
+    blocked = api.get(f"/candidates/{cid}/identity?purpose=operations")
     assert blocked.status_code == 403
     assert "second factor on this session" in blocked.json()["detail"]
 
     api.post("/auth/mfa", json={"code": totp_now(staff_login["totp_secret"], 1)})
-    assert api.get(f"/candidates/{cid}/identity").status_code == 200
+    assert api.get(f"/candidates/{cid}/identity?purpose=operations").status_code == 200
 
 
 def test_an_account_with_no_second_factor_cannot_reach_identity_data(
@@ -121,7 +121,7 @@ def test_an_account_with_no_second_factor_cannot_reach_identity_data(
     token = login(session, staff_login["phone"], staff_login["password"])
     api.headers["Authorization"] = f"Bearer {token}"
 
-    blocked = api.get(f"/candidates/{cid}/identity")
+    blocked = api.get(f"/candidates/{cid}/identity?purpose=operations")
     assert blocked.status_code == 403
     assert "enrol one at" in blocked.json()["detail"]
 
@@ -136,10 +136,10 @@ def test_elevation_is_per_session_not_per_account(
 
     api.headers["Authorization"] = f"Bearer {laptop}"
     api.post("/auth/mfa", json={"code": totp_now(staff_login["totp_secret"], 1)})
-    assert api.get(f"/candidates/{cid}/identity").status_code == 200
+    assert api.get(f"/candidates/{cid}/identity?purpose=operations").status_code == 200
 
     api.headers["Authorization"] = f"Bearer {phone}"
-    assert api.get(f"/candidates/{cid}/identity").status_code == 403
+    assert api.get(f"/candidates/{cid}/identity?purpose=operations").status_code == 403
 
 
 def test_resetting_mfa_cuts_live_sessions(api, session, staff_login):
@@ -179,4 +179,4 @@ def test_the_enrolment_flow_over_http(api, session, staff_login, make_candidate)
     assert api.post(
         "/auth/mfa", json={"code": totp_now(secret, 1)}
     ).status_code == 200
-    assert api.get(f"/candidates/{cid}/identity").status_code == 200
+    assert api.get(f"/candidates/{cid}/identity?purpose=operations").status_code == 200
