@@ -270,6 +270,43 @@ def export_candidate_data(session: Session, candidate_id: UUID) -> dict:
              WHERE p.candidate_id = :cid ORDER BY pr.period_start
             """
         ),
+        # Why money came off her wage, in the words that were written down.
+        # _add_deduction_line requires at least ten characters of reason for a
+        # damage or other deduction, "in enough words that the worker could
+        # dispute it" -- and until now she was never shown them. The pay
+        # section returned deductions_rwf, a number, and nothing else.
+        "pay_deductions": rows(
+            """
+            SELECT pr.period_start, pr.period_end, d.kind, d.amount_rwf, d.note
+              FROM pay_deductions d
+              JOIN pay_records pr ON pr.pay_id = d.pay_id
+              JOIN placements p ON p.placement_id = pr.placement_id
+             WHERE p.candidate_id = :cid
+             ORDER BY pr.period_start, d.kind
+            """
+        ),
+        # The agreement itself. She is a party to it, and it is the one record
+        # erasure deliberately leaves standing -- so it is the one she has the
+        # clearest claim to see.
+        "contracts": rows(
+            """
+            SELECT pc.contract_ref, pc.issued_at, pc.worker_acknowledged_at,
+                   pc.employer_acknowledged_at, pc.terms
+              FROM placement_contracts pc
+              JOIN placements p ON p.placement_id = pc.placement_id
+             WHERE p.candidate_id = :cid ORDER BY pc.issued_at
+            """
+        ),
+        # What she told us a journey really cost. Erasure treats this as her
+        # words and removes it, so she must be able to see it first.
+        "transport_you_reported_notes": rows(
+            """
+            SELECT tr.work_date, tr.note
+              FROM transport_reports tr
+             WHERE tr.candidate_id = :cid AND tr.note IS NOT NULL
+             ORDER BY tr.work_date
+            """
+        ),
         "follow_ups": rows(
             """
             SELECT f.checkpoint::text AS checkpoint, f.due_on, f.completed_at,

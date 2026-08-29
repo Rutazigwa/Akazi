@@ -1590,6 +1590,24 @@ jobsinrwanda.ai, New Times) serve mid-career formal hiring and are low overlap.
 3. NCSA controller/processor registration submitted? (30 working days)
 4. Who is the designated Data Protection Officer?
 5. `staff` table and role model defined?
+6. **Does a placement contract survive an erasure request?** It is the one
+   record that deliberately keeps her name after erasure. A contract names its
+   parties by necessity -- one that does not is not evidence of an agreement,
+   and it protects her as much as the employer -- and `fn_contract_terms_immutable`
+   refuses any change to agreed terms, which is what makes a contract worth
+   anything. Retention for establishing or defending a legal claim is a
+   recognised basis, so the engineering position is that this is lawful
+   retention rather than a gap. **Counsel should confirm it.** Until then the
+   honest statement is that erasure leaves a person's name in her contracts,
+   and the system says so rather than quietly doing it: the exception is
+   written into `migrations/051` and into the `ALLOWED` list in
+   `tests/test_erasure_leaves_nothing.py`, and every other column is redacted.
+7. **Does the exact date of birth survive an erasure?** It does today.
+   Combined with gender, district, sector and education level it is a
+   quasi-identifier at Rwandan sector granularity, and `candidates_age_eligible()`
+   already filters on `erased_at IS NULL`, so matching does not need it. No
+   migration states a reason for keeping it. Either write the reason down or
+   coarsen it to a birth year.
 
 ## 10. Go / no-go
 

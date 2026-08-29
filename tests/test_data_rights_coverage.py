@@ -21,7 +21,14 @@ ERASURE = Path("migrations/044_erasure_reaches_free_text.sql")
 
 
 def candidate_tables(session) -> set[str]:
-    """Every base table that links to a candidate."""
+    """Every base table that links to a candidate, directly or through one hop.
+
+    A literal candidate_id column is not the whole set. attendance, follow_ups,
+    pay_records, pay_deductions and placement_contracts all hold data about a
+    person and reach her through placement_id or pay_id -- so for a long time
+    this comparison could not see five tables, two of which really did keep her
+    name after an erasure.
+    """
     return set(session.execute(
         text(
             """
@@ -29,8 +36,8 @@ def candidate_tables(session) -> set[str]:
               FROM information_schema.columns c
               JOIN pg_tables t ON t.tablename = c.table_name
                               AND t.schemaname = 'public'
-             WHERE c.column_name = 'candidate_id'
-               AND c.table_schema = 'public'
+             WHERE c.table_schema = 'public'
+               AND c.column_name IN ('candidate_id', 'placement_id', 'pay_id')
             """
         )
     ).scalars())
@@ -59,12 +66,25 @@ ERASURE_EXCLUSIONS = {
     # that a read or an erasure occurred, and overwriting them would defeat
     # having it. See migration 044.
     # Structural links carrying no free text about the person.
-    "assessment_results": "scores only, no free text identifying her",
     "availability": "day and time windows only",
     "consent_records": "the proof of what she agreed to, kept deliberately",
-    "cohort_members": "membership and outcome only",
-    "placements": "redacted via candidates; carries no personal free text",
+    # A contract names its parties by necessity, and its terms are immutable by
+    # trigger. Retained for establishing or defending a legal claim -- recorded
+    # as an open question in CLAUDE.md, because that boundary is a legal call.
+    "placement_contracts": "the agreement she was a party to",
+    # What money moved and how. pay_records.method is 'momo' or 'cash'; the
+    # written reason a deduction was taken lives in pay_deductions, which is
+    # redacted.
+    "pay_records": "amounts and method, no free text about her",
 }
+
+# Three reasons that used to sit in ERASURE_EXCLUSIONS were simply untrue, and
+# nothing checked them: "assessment_results: scores only, no free text" beside
+# a notes column, "cohort_members: membership and outcome only" beside another,
+# and "placements: carries no personal free text" beside employer_note and
+# match_reason. All three held a person's name after she had been erased. A
+# stated reason is only worth as much as the thing that checks it -- which is
+# now tests/test_erasure_leaves_nothing.py, not this list.
 
 
 def test_the_export_returns_every_table_that_holds_her_data(session):
@@ -80,11 +100,29 @@ def test_the_export_returns_every_table_that_holds_her_data(session):
     )
 
 
+def erasure_function_body(session) -> str:
+    """The installed function, not a file.
+
+    This used to read migrations/044 as text, which was wrong twice over: a
+    table named in a comment satisfied it, and a redaction added by any later
+    migration was invisible to it -- so widening the table list above reported
+    five tables as unredacted that migration 051 redacts.
+    """
+    return session.execute(
+        text("SELECT pg_get_functiondef('erase_candidate_identity(uuid,uuid)'"
+             "::regprocedure)")
+    ).scalar_one()
+
+
 def test_erasure_reaches_every_table_that_holds_her_words(session):
-    source = ERASURE.read_text()
+    import re
+
+    body = erasure_function_body(session)
+    # An actual UPDATE of that table, not a mention of its name.
+    updated = set(re.findall(r"UPDATE\s+(\w+)", body))
     missing = [
         table for table in sorted(candidate_tables(session))
-        if table not in ERASURE_EXCLUSIONS and table not in source
+        if table not in ERASURE_EXCLUSIONS and table not in updated
     ]
     assert missing == [], (
         f"erasure would leave her data in: {missing}. Add them to "
