@@ -11,7 +11,7 @@ shifts repeatedly go uncovered is subsidised by the ones whose do not.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import time, timedelta
 
 from sqlalchemy import text
 
@@ -168,7 +168,8 @@ def test_a_cooperative_with_a_problem_is_ranked_higher(
             session, employer_id=employer_id, title="Shift", work_type="shift",
             headcount=1, starts_on=kigali_today() + timedelta(days=1),
             pay_rwf=5000, pay_unit="day",
-        )
+        shift_start=time(8, 0), shift_end=time(16, 0),
+    )
         for _ in range(DISTINCT_NO_SHOWS_BEFORE_CONCERN):
             no_show(session, make_placement, make_candidate, request_id)
 

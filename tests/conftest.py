@@ -183,6 +183,14 @@ def staff_id(session) -> uuid.UUID:
 @pytest.fixture
 def make_candidate(session, staff_id):
     def _make(gender: str = "F", age_years: int = 22, name: str = "Test Worker"):
+        """A registered candidate, with no availability stated.
+
+        Availability is left to each test to declare, because several of them
+        turn on exactly which windows exist. Note that a candidate with none
+        matches nothing now that shift requests must carry hours -- before
+        migration 053 the availability filter was skipped whenever a request
+        had no times, which was most of them.
+        """
         cid = session.execute(
             text(
                 """
@@ -253,18 +261,29 @@ def make_employer(session):
 
 @pytest.fixture
 def make_request(session, employer_id):
-    def _make(pay_rwf: int = 5000, headcount: int = 1):
+    def _make(pay_rwf: int = 5000, headcount: int = 1,
+              shift_start: str = "08:00", shift_end: str = "16:00"):
+        """A daytime shift by default, with hours.
+
+        Hours are not decoration: availability matching and the after-dark
+        safety filter both skip silently when shift_end is null, so a fixture
+        that could not express them meant most of this suite was exercising
+        the untimed path without saying so. See migration 053.
+        """
         return session.execute(
             text(
                 """
                 INSERT INTO work_requests (employer_id, title, work_type,
-                                           headcount, starts_on, pay_rwf, pay_unit)
+                                           headcount, starts_on, pay_rwf,
+                                           pay_unit, shift_start, shift_end)
                 VALUES (:eid, 'Morning cleaner', 'shift', :headcount,
-                        kigali_today(), :pay, 'day')
+                        kigali_today(), :pay, 'day',
+                        CAST(:start AS time), CAST(:end AS time))
                 RETURNING request_id
                 """
             ),
-            {"eid": employer_id, "headcount": headcount, "pay": pay_rwf},
+            {"eid": employer_id, "headcount": headcount, "pay": pay_rwf,
+             "start": shift_start, "end": shift_end},
         ).scalar_one()
 
     return _make

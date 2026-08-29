@@ -89,8 +89,9 @@ def rival(session, staff_id):
         text(
             """
             INSERT INTO work_requests (employer_id, title, work_type, headcount,
-                                       starts_on, pay_rwf, pay_unit)
-            VALUES (:eid, 'Rival shift', 'shift', 1, kigali_today(), 6000, 'day')
+                                       starts_on, pay_rwf, pay_unit, shift_start, shift_end)
+            VALUES (:eid, 'Rival shift', 'shift', 1, kigali_today(), 6000,
+                    'day', '08:00', '16:00')
             RETURNING request_id
             """
         ),
@@ -396,6 +397,7 @@ def test_posting_a_shift_uses_the_session_not_the_form(
             "csrf_token": csrf(page), "title": "Injected shift",
             "work_type": "shift", "headcount": "1", "starts_on": str(TODAY),
             "pay_rwf": "5000", "pay_unit": "day",
+            "shift_start": "08:00", "shift_end": "16:00",
             # Ignored: employer_id comes from the session.
             "employer_id": str(rival["employer_id"]),
         },

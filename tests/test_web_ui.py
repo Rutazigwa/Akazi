@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import timedelta
+from datetime import time, timedelta
 
 import pytest
 from sqlalchemy import text
@@ -356,6 +356,7 @@ def test_no_transport_estimate_is_not_shown_as_free(web, session, staff_login):
         session, employer_id=employer_id, title="Shop assistant",
         work_type="shift", headcount=1, starts_on=TODAY, pay_rwf=5000,
         pay_unit="day",
+        shift_start=time(8, 0), shift_end=time(16, 0),
     )
 
     page = web.get("/ui/candidates").text

@@ -272,6 +272,7 @@ def _safety(c: Candidate, r: WorkRequest) -> str | None:
     """After-dark shifts are a placement risk we do not take by default."""
     if r.shift_end is None or r.shift_end <= AFTER_DARK:
         return None
+
     if c.gender != "F":
         return None
     if r.transport_covered or c.accepts_after_dark:
@@ -311,6 +312,12 @@ def _reason(c: Candidate, r: WorkRequest) -> str:
         parts.append(f"{skill} {scored} (needs {min_score})")
     if r.shift_start and r.shift_end:
         parts.append("availability")
+    elif c.gender == "F":
+        # Shift work must state its hours (migration 053), so this is an
+        # internship or a project. Neither the availability check nor the
+        # after-dark filter can run without an end time, and a reason that
+        # simply omits them reads as though they passed.
+        parts.append("hours not stated -- after-dark safety not checked")
     if c.est_commute_min is not None:
         parts.append(f"{c.est_commute_min}-min commute")
     daily_pay = r.daily_pay_rwf()

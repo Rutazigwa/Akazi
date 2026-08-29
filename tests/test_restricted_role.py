@@ -245,9 +245,9 @@ def test_the_app_role_can_remove_a_skill_requirement(
     ).scalar_one()
     request_id = restricted_session.execute(
         text("INSERT INTO work_requests (employer_id, title, work_type, "
-             "headcount, starts_on, pay_rwf, pay_unit) "
-             "VALUES (:e, 'Shift', 'shift', 1, kigali_today(), 5000, 'day') "
-             "RETURNING request_id"),
+             "headcount, starts_on, pay_rwf, pay_unit, shift_start, shift_end) "
+             "VALUES (:e, 'Shift', 'shift', 1, kigali_today(), 5000, 'day', "
+             "'08:00', '16:00') RETURNING request_id"),
         {"e": str(employer_id)},
     ).scalar_one()
     restricted_session.commit()

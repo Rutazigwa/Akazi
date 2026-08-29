@@ -319,3 +319,31 @@ def test_an_unknown_fare_passes_the_filter_by_decision_not_by_arithmetic():
                                                   max_commute_rwf=50)])
     )
     assert "ceiling" in refused.reason
+
+
+# --- a shift with no end time used to skip two filters ---------------------
+
+def test_work_with_no_stated_hours_says_the_safety_check_did_not_run():
+    """Shift work must carry hours, but an internship or a project need not.
+
+    Both the availability check and the after-dark filter are guarded on the
+    times being present, so without them they pass silently. Before this the
+    reason read "matched on: 20-min commute, net RWF 4500/day after transport"
+    -- indistinguishable from a match where both checks had run and passed.
+    """
+    # An internship: work_type is not part of the in-memory WorkRequest, but
+    # only non-shift work can reach the matcher without hours at all.
+    request = make_request(shift_start=None, shift_end=None,
+                           transport_covered=False)
+    woman = make_candidate(gender="F", accepts_after_dark=False)
+    reason = match_candidates(request, [woman]).matches[0].reason
+    assert "after-dark safety not checked" in reason, reason
+
+
+def test_a_timed_shift_says_nothing_of_the_sort():
+    """Guards the guard: the note must not appear where the checks did run."""
+    request = make_request(shift_start=time(8, 0), shift_end=time(16, 0))
+    woman = make_candidate(gender="F", accepts_after_dark=False)
+    reason = match_candidates(request, [woman]).matches[0].reason
+    assert "not checked" not in reason, reason
+    assert "availability" in reason

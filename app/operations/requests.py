@@ -49,6 +49,21 @@ def create_work_request(
     if pay_unit not in PAY_UNITS:
         raise RequestError(f"pay_unit must be one of {PAY_UNITS}")
 
+    # A shift with no end time skips two of the four matching filters:
+    # availability is guarded on both times being present, and the after-dark
+    # safety filter returns on its first line when shift_end is null. Two blank
+    # fields on the employer's form turned off the protection that exists
+    # because female unemployment is 15.5% against 11.6% male.
+    #
+    # Only shift work. An internship or a project can legitimately have no
+    # daily window, and demanding one would be inventing data.
+    if work_type == "shift" and (shift_start is None or shift_end is None):
+        raise RequestError(
+            "a shift needs a start and an end time -- we match on whether "
+            "someone is free then, and whether they can get home safely "
+            "afterwards, and neither check can run without them"
+        )
+
     return session.execute(
         text(
             """

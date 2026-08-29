@@ -7,7 +7,7 @@ not be computed at all.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import time, timedelta
 
 import pytest
 from sqlalchemy import text
@@ -26,6 +26,7 @@ def _request(session, employer_id, **over):
     fields = dict(
         title="Morning cleaner", work_type="shift", headcount=1,
         starts_on=TOMORROW, pay_rwf=5000, pay_unit="day",
+        shift_start=time(8, 0), shift_end=time(16, 0),
     )
     fields.update(over)
     return post_request(session, employer_id, **fields)
@@ -102,7 +103,8 @@ def test_a_reorder_cannot_point_at_another_employers_request(
             session, employer_id=mine, title="Cleaner", work_type="shift",
             headcount=1, starts_on=TOMORROW, pay_rwf=5000, pay_unit="day",
             reorders_request=theirs,
-        )
+        shift_start=time(8, 0), shift_end=time(16, 0),
+    )
     assert "same employer" in str(caught.value)
     session.rollback()
 

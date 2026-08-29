@@ -164,6 +164,15 @@ def test_never_assessed_reads_differently_from_failed(
     code, _ = skill()
     cid = make_candidate(name="Unassessed")
     record_consent(session, cid, "placement", True, "paper", staff_id)
+    # Free for the shift, so the rejection that comes back is about the skill
+    # rather than about the hours. Before shift requests carried times the
+    # availability filter never ran, and this test reached the skills filter
+    # by accident.
+    session.execute(
+        text("INSERT INTO availability (candidate_id, day_of_week, start_time, "
+             "end_time) SELECT :c, d, '06:00', '20:00' FROM generate_series(0, 6) d"),
+        {"c": str(cid)},
+    )
     request_id = make_request()
     require_skill(session, request_id, code, min_score=3)
 

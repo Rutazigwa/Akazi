@@ -77,9 +77,10 @@ def test_a_shift_with_nothing_outstanding_carries_no_flags(session, shift):
     # per (request, candidate), so prior work has to sit on a different one.
     earlier = session.execute(
         text("INSERT INTO work_requests (employer_id, title, work_type, "
-             "headcount, starts_on, pay_rwf, pay_unit) "
+             "headcount, starts_on, pay_rwf, pay_unit, shift_start, shift_end) "
              "SELECT employer_id, 'Last week', 'shift', 1, "
-             "kigali_today() - 14, 5000, 'day' FROM work_requests "
+             "kigali_today() - 14, 5000, 'day', '08:00', '16:00' "
+             "FROM work_requests "
              "WHERE request_id = :r RETURNING request_id"),
         {"r": str(made["request_id"])},
     ).scalar_one()
@@ -163,8 +164,10 @@ def test_a_shift_nobody_is_assigned_to_is_reported(session, employer_id):
     """The guarantee does not cover a slot that was never filled."""
     session.execute(
         text("INSERT INTO work_requests (employer_id, title, work_type, "
-             "headcount, starts_on, pay_rwf, pay_unit) VALUES "
-             "(:e, 'Night guard', 'shift', 2, :d, 5000, 'day')"),
+             "headcount, starts_on, pay_rwf, pay_unit, shift_start, "
+             "shift_end) VALUES "
+             "(:e, 'Night guard', 'shift', 2, :d, 5000, 'day', "
+             "'18:00', '02:00')"),
         {"e": employer_id, "d": TOMORROW},
     )
     short = unstaffed_shifts_on(session, TOMORROW)
