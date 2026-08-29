@@ -162,3 +162,83 @@ button.outline-bad    { border-color: var(--bad); color: var(--bad); }
       radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, .16), rgba(15, 23, 42, 0)) right center / .9rem 100% no-repeat scroll;
   }
 }
+
+/* A table of things you can act on does not become usable by scrolling
+   sideways -- it becomes a table whose buttons are somewhere off the screen.
+   On the employer dashboard at 360px the whole actions column, "Order again"
+   and "Cancel shift", sat past the right edge behind tall empty rows, with
+   nothing to say it was there. CLAUDE.md rules out an employer app
+   permanently, so this IS the employer's phone, and those are the two things
+   the page exists to do.
+
+   So below the breakpoint these tables stop being tables: each row becomes a
+   block, each cell a labelled line, and the actions land at the bottom of the
+   row where a thumb can reach them. The column headings move into the cells
+   via data-label, which is why every td in a .stack table carries one. */
+@media (max-width: 700px) {
+  table.stack,
+  table.stack tbody,
+  table.stack tr,
+  table.stack td { display: block; width: 100%; }
+
+  /* The header row has nowhere to go: each cell carries its own label now. */
+  table.stack thead { display: none; }
+
+  table.stack {
+    /* Undo the scroll container the generic rule sets up; nothing overflows
+       once the row is a block. */
+    background: none;
+    overflow-x: visible;
+  }
+
+  table.stack tr {
+    padding: .7rem 0;
+    border-bottom: 1px solid #e6e9ee;
+  }
+  table.stack tr:last-child { border-bottom: 0; }
+
+  table.stack td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding: .18rem 0;
+    border: 0;
+    text-align: left;
+  }
+
+  table.stack td::before {
+    content: attr(data-label);
+    color: #5b6774;
+    font-weight: 600;
+    font-size: .78rem;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    flex: 0 0 auto;
+  }
+
+  /* The actions cell carries no label, and its forms need the full width
+     rather than being squeezed against a heading that is not there. */
+  table.stack td:not([data-label]) {
+    display: block;
+    padding-top: .5rem;
+  }
+  table.stack td:not([data-label])::before { content: none; }
+  table.stack td:not([data-label]) form.act { margin-top: .45rem; }
+  table.stack td:not([data-label]) form.act input { flex: 1 1 auto; min-width: 0; }
+}
+
+
+/* Each action is its own form, and each form is its own line. Laid out inline
+   they interleaved: the cancellation's "Why?" box came to rest beside the
+   "Order again" button, so the field that arms the destructive action read as
+   part of the harmless one. */
+form.act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+  margin: .25rem 0;
+}
+form.act button { white-space: nowrap; }
+form.act > .small { flex: 1 0 100%; margin: 0; }

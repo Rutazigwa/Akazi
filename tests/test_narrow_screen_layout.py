@@ -37,6 +37,10 @@ PHONE = {"width": 360, "height": 760}
 PAGES = ["/ui/", "/ui/tomorrow", "/ui/requests", "/ui/employers", "/ui/candidates",
          "/ui/catalogue", "/ui/staff", "/ui/reports"]
 
+# The employer portal is not a lesser case. CLAUDE.md rules out an employer
+# mobile app permanently, so these pages are the employer's phone.
+EMPLOYER_PAGES = ["/employer/", "/employer/post"]
+
 pytestmark = pytest.mark.skipif(
     not os.path.exists(CHROMIUM), reason="no chromium in this environment"
 )
@@ -211,3 +215,119 @@ def test_the_live_server_really_reads_the_test_transaction(signed_in_phone,
         "the browser did not see a row written in the test transaction; the "
         "pages above are rendering empty and proving nothing"
     )
+
+
+# --- the employer portal, which will never have an app to fall back on ------
+
+@pytest.fixture
+def employer_phone(browser, live, api, session, employer_id):
+    """A 360px browser signed in as an employer contact.
+
+    The invited password is temporary and enforced as such, so this walks the
+    real first sign-in rather than reaching past it.
+    """
+    import re
+
+    from app.employer_auth import invite_contact
+
+    contact_id = session.execute(
+        text("INSERT INTO employer_contacts (employer_id, full_name, phone, "
+             "is_primary) VALUES (:e, 'Chantal', '+250788000131', true) "
+             "RETURNING contact_id"),
+        {"e": str(employer_id)},
+    ).scalar_one()
+    temporary = invite_contact(session, contact_id)
+
+    landed = api.post("/employer/login",
+                      data={"phone": "+250788000131", "password": temporary},
+                      follow_redirects=True)
+    assert "Choose a password" in landed.text, "a temporary password must be forced"
+    token = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', landed.text).group(1)
+    api.post("/employer/password",
+             data={"csrf_token": token, "current_password": temporary,
+                   "new_password": "a-sufficiently-long-password"},
+             follow_redirects=True)
+
+    cookie = api.cookies.get("akazi_employer")
+    assert cookie, "no employer session cookie -- this fixture did not sign in"
+
+    ctx = browser.new_context(viewport=PHONE)
+    ctx.add_cookies([{"name": "akazi_employer", "value": cookie,
+                      "domain": "127.0.0.1", "path": "/"}])
+    page = ctx.new_page()
+    yield page, live
+    ctx.close()
+
+
+@pytest.mark.parametrize("path", EMPLOYER_PAGES)
+def test_the_employer_portal_fits_a_phone(employer_phone, path):
+    page, base = employer_phone
+    page.goto(base + path, wait_until="networkidle")
+    assert "/employer/login" not in page.url, (
+        f"{path} redirected to sign-in; this measured nothing"
+    )
+    size = page.evaluate(
+        "() => ({doc: document.documentElement.scrollWidth,"
+        "        view: document.documentElement.clientWidth})"
+    )
+    assert size["doc"] <= size["view"] + 2, (
+        f"{path} lays out {size['doc']}px wide in a {size['view']}px viewport"
+    )
+
+
+def test_an_employer_can_reach_every_action_without_scrolling_sideways(
+    employer_phone, session, employer_id, make_request
+):
+    """The defect this was written for.
+
+    Making the page stop overflowing is not the same as making it usable: the
+    first fix left "Order again" and "Cancel shift" off the right-hand edge of
+    a scrolling table, behind tall empty rows with nothing to say they were
+    there. Those two buttons are what the page is for.
+    """
+    make_request()
+    session.commit()
+    page, base = employer_phone
+    page.goto(base + "/employer/", wait_until="networkidle")
+
+    viewport = page.viewport_size["width"]
+    for label in ("Order again", "Cancel shift"):
+        button = page.get_by_role("button", name=label).first
+        assert button.count() >= 1, f"no {label!r} button on the dashboard"
+        box = button.bounding_box()
+        assert box is not None, f"{label!r} is not rendered"
+        assert box["x"] >= 0 and box["x"] + box["width"] <= viewport + 1, (
+            f"{label!r} sits at x={box['x']:.0f}..{box['x'] + box['width']:.0f} "
+            f"in a {viewport}px viewport -- an employer cannot reach it"
+        )
+
+
+def test_a_stacked_row_still_labels_every_value(employer_phone, session,
+                                                employer_id, make_request):
+    """Hiding the header row is only safe if the cells carry their own labels.
+
+    A td that lost its data-label renders as a bare value with no heading, and
+    on a phone that is the only heading there is.
+    """
+    make_request()
+    session.commit()
+    page, base = employer_phone
+    page.goto(base + "/employer/", wait_until="networkidle")
+
+    unlabelled = page.evaluate("""() => {
+        const out = [];
+        for (const table of document.querySelectorAll('table.stack')) {
+            const heads = table.querySelectorAll('thead th').length;
+            for (const row of table.querySelectorAll('tbody tr')) {
+                const cells = [...row.children];
+                cells.forEach((td, i) => {
+                    // the trailing actions cell is deliberately unlabelled
+                    if (i < heads - 1 && !td.hasAttribute('data-label')) {
+                        out.push(`${table.previousElementSibling?.textContent?.trim()} col ${i}`);
+                    }
+                });
+            }
+        }
+        return out;
+    }""")
+    assert unlabelled == [], unlabelled

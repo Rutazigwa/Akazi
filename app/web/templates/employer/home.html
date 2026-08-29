@@ -38,23 +38,27 @@
 <div class="card">
   <h2>Workers assigned</h2>
   {% if workers %}
-  <table>
+  <table class="stack">
+    <thead>
     <tr><th>Worker</th><th>Shift</th><th>Date</th><th>Status</th><th class="num">Days worked</th><th></th></tr>
+    </thead>
+    <tbody>
     {% for w in workers %}
     <tr>
-      <td>
+      <td data-label="Worker">
         {{ w.display_name }}
         {% if w.is_replacement %}<br><span class="pill good">cover</span>{% endif %}
       </td>
-      <td>{{ w.title }}
+      <td data-label="Shift">{{ w.title }}
         {% if w.shift_start %}<br><span class="small muted">{{ w.shift_start.strftime('%H:%M') }}–{{ w.shift_end.strftime('%H:%M') }}</span>{% endif %}
       </td>
-      <td class="small muted">{{ w.starts_on }}</td>
-      <td><span class="pill {{ 'good' if w.status in ('active','completed') else ('bad' if w.status == 'no_show' else 'warn') }}">{{ w.status }}</span></td>
-      <td class="num">{{ w.days_present }}</td>
+      <td class="small muted" data-label="Date">{{ w.starts_on }}</td>
+      <td data-label="Status"><span class="pill {{ 'good' if w.status in ('active','completed') else ('bad' if w.status == 'no_show' else 'warn') }}">{{ w.status }}</span></td>
+      <td class="num" data-label="Days worked">{{ w.days_present }}</td>
       <td><a href="/employer/workers/{{ w.placement_id }}">Open</a></td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
   {% else %}
   <p class="muted small">Nobody assigned yet. <a href="/employer/post">Post a shift</a>.</p>
@@ -64,31 +68,45 @@
 <div class="card">
   <h2>Your requests</h2>
   {% if requests %}
-  <table>
+  <table class="stack">
+    <thead>
     <tr><th>Role</th><th>Date</th><th class="num">Pay</th><th class="num">Assigned</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
     {% for r in requests %}
     <tr>
-      <td>{{ r.title }}</td>
-      <td class="small muted">{{ r.starts_on }}</td>
-      <td class="num">{{ '{:,}'.format(r.pay_rwf) }}/{{ r.pay_unit }}</td>
-      <td class="num">{{ r.assigned }}/{{ r.headcount }}</td>
-      <td><span class="pill {{ 'good' if r.status == 'filled' else 'warn' }}">{{ r.status }}</span></td>
+      <td data-label="Role">{{ r.title }}</td>
+      <td class="small muted" data-label="Date">{{ r.starts_on }}</td>
+      <td class="num" data-label="Pay">{{ '{:,}'.format(r.pay_rwf) }}/{{ r.pay_unit }}</td>
+      <td class="num" data-label="Assigned">{{ r.assigned }}/{{ r.headcount }}</td>
+      <td data-label="Status"><span class="pill {{ 'good' if r.status == 'filled' else 'warn' }}">{{ r.status }}</span></td>
       <td>
-        <form class="inline" method="post" action="/employer/requests/{{ r.request_id }}/reorder">
+        <form class="act" method="post" action="/employer/requests/{{ r.request_id }}/reorder">
           <input type="hidden" name="csrf_token" value="{{ employer.csrf_token }}">
           <input class="w-auto" type="date" name="starts_on" value="{{ today }}">
           <button class="secondary">Order again</button>
         </form>
         {% if r.status in ('open', 'filling', 'filled') %}
-        <form class="inline" method="post" action="/employer/requests/{{ r.request_id }}/cancel">
+        <form class="act" method="post" action="/employer/requests/{{ r.request_id }}/cancel">
           <input type="hidden" name="csrf_token" value="{{ employer.csrf_token }}">
-          <input class="w-auto" name="reason" placeholder="Why?" required>
+          <input class="w-auto" name="reason" placeholder="Why cancel?" required>
           <button class="secondary outline-bad">Cancel shift</button>
+          {#- Said before the click, not after. Cancelling an unfilled request
+              costs nobody anything; cancelling a filled one takes a day's pay
+              off someone who has already arranged their week around it. Those
+              two buttons looked identical. -#}
+          {% if r.assigned %}
+          <span class="small muted">
+            {{ r.assigned }} worker{{ 's' if r.assigned != 1 }} assigned — we
+            will tell them it is off
+          </span>
+          {% endif %}
         </form>
         {% endif %}
       </td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
   {% else %}<p class="muted small">No requests yet.</p>{% endif %}
 </div>
