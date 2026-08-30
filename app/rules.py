@@ -69,3 +69,18 @@ TARGET_DAYS_TO_FILL = 7
 # page silently displaying 25 of 3,590 is worse than a slow one.
 DASHBOARD_ROWS = 25
 REGISTRY_ROWS = 100
+
+
+# --- how many alerts one person can usefully receive ----------------------
+#
+# sweep_escalations sent one SMS per breached escalation, with no bound.
+# Measured at scale: 100 breached at once produced 100 text messages to one
+# staff member in a single five-minute run. That is not a hundred prompts, it
+# is a phone nobody can use, and among a hundred texts the harassment ones are
+# indistinguishable from the rest.
+#
+# The module already knew this about repetition -- "re-alerting every five
+# minutes until someone acknowledges is how an alert becomes noise, and noise
+# is how the next one gets ignored" -- and then sent a hundred at once. Above
+# this many, one message names the counts by kind instead.
+ALERT_BURST_LIMIT = 5

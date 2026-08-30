@@ -325,6 +325,20 @@ If it prints `unroutable`, there was a breached escalation and nobody active
 to tell. Those are left unmarked deliberately, so the next run tries again —
 an alert nobody can receive is not "handled".
 
+`summarised` counts backlogs sent as one message rather than many. Above five
+breaches for the same recipient the alert becomes a single text naming the
+counts by kind, gravest first: *"100 escalations have missed their response
+time (25 harassment, 25 safety, 25 pay, 25 other)."* Measured at scale, a
+hundred breached escalations produced a hundred text messages to one person in
+a single five-minute run — not a hundred prompts, a phone nobody can use, and
+among a hundred texts the harassment ones were indistinguishable.
+
+The bound is per recipient rather than per owner because
+`_breach_recipient` routes to somebody *other* than whoever missed the
+deadline: a dozen escalations owned by a dozen coordinators all converge on the
+first active owner or admin. Grouping by owner would have missed the burst
+entirely.
+
 ### Alert when it stops
 
 Every run writes a row to `job_runs`, so a cron that dies is distinguishable

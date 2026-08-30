@@ -143,6 +143,19 @@ TEMPLATES: dict[str, Template] = {
             "Open it now: {link}"
         ),
     ),
+    # One message instead of many when a backlog breaches at once. It names
+    # the kinds and nothing else, exactly as the single alert does: a missed
+    # deadline is a prompt to open the system, not a channel for what somebody
+    # reported.
+    "escalation_breach_many": Template(
+        key="escalation_breach_many",
+        requires_consent=False,
+        text=(
+            "Akazi: {count} escalations have missed their response time "
+            "({breakdown}). The oldest was due {oldest}.\n"
+            "Open them now: {link}"
+        ),
+    ),
     "employer_cover_sent": Template(
         key="employer_cover_sent",
         requires_consent=False,

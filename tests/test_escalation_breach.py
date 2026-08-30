@@ -221,3 +221,131 @@ def test_a_worker_message_is_still_held_during_quiet_hours(session,
     report = dispatch(session, RecordingProvider(), now=midnight_kigali)
     assert report.sent == 0
     assert report.deferred == 1
+
+
+# --- a hundred alerts is not a hundred prompts ----------------------------
+
+def one_breached(session, coordinator, kind="pay"):
+    """An escalation that has already missed its response time."""
+    from app.operations.escalations import raise_escalation
+
+    eid = raise_escalation(session, kind, detail="waiting",
+                           owner_staff_id=coordinator)
+    session.execute(
+        text("UPDATE escalations SET raised_at = now() - INTERVAL '3 days', "
+             "respond_by = now() - INTERVAL '2 days' WHERE escalation_id = :e"),
+        {"e": str(eid)},
+    )
+    return eid
+
+
+def alerts(session):
+    return session.execute(
+        text("SELECT template_key, body FROM messages WHERE staff_id IS NOT NULL "
+             "ORDER BY created_at")
+    ).mappings().all()
+
+
+def test_a_handful_of_breaches_are_alerted_one_by_one(session, coordinator):
+    """Below the limit nothing changes: each names its own escalation."""
+    from app.operations.escalations import alert_on_missed_response_times
+    from app.rules import ALERT_BURST_LIMIT
+
+    for _ in range(ALERT_BURST_LIMIT):
+        one_breached(session, coordinator)
+
+    result = alert_on_missed_response_times(session)
+    assert result["alerted"] == ALERT_BURST_LIMIT
+    assert result["summarised"] == 0
+    assert len(alerts(session)) == ALERT_BURST_LIMIT
+
+
+def test_a_backlog_becomes_one_message_not_a_hundred(session, coordinator):
+    """Measured at scale: 100 breached escalations produced 100 text messages
+    to one staff member in a single five-minute run.
+
+    That is not a hundred prompts, it is a phone nobody can use -- and among a
+    hundred texts the harassment ones are indistinguishable.
+    """
+    from app.operations.escalations import alert_on_missed_response_times
+    from app.rules import ALERT_BURST_LIMIT
+
+    for _ in range(ALERT_BURST_LIMIT + 20):
+        one_breached(session, coordinator)
+
+    result = alert_on_missed_response_times(session)
+    sent = alerts(session)
+    assert len(sent) == 1, f"{len(sent)} messages for one backlog"
+    assert sent[0]["template_key"] == "escalation_breach_many"
+    assert result["summarised"] == 1
+    # Still counted as handled, so the next run does not repeat them.
+    assert result["alerted"] == ALERT_BURST_LIMIT + 20
+
+
+def test_the_summary_says_how_many_are_harassment(session, coordinator):
+    """The whole reason a burst is dangerous.
+
+    A summary that hid the kinds would be worse than the hundred texts: at
+    least those said "harassment" somewhere.
+    """
+    from app.operations.escalations import alert_on_missed_response_times
+    from app.rules import ALERT_BURST_LIMIT
+
+    for _ in range(ALERT_BURST_LIMIT + 4):
+        one_breached(session, coordinator, kind="pay")
+    for _ in range(3):
+        one_breached(session, coordinator, kind="harassment")
+
+    alert_on_missed_response_times(session)
+    body = alerts(session)[0]["body"]
+    assert "3 harassment" in body, body
+    # Gravest first: harassment must be read before the pay count.
+    assert body.index("harassment") < body.index("pay"), body
+
+
+def test_breaches_owned_by_different_people_still_land_on_one_phone(
+    session, staff_id, coordinator
+):
+    """Which is why the bound is per recipient rather than per owner.
+
+    _breach_recipient deliberately routes to somebody other than whoever missed
+    the deadline -- the first active owner or admin. So a dozen escalations
+    spread across a dozen coordinators do not become a dozen people each
+    receiving one; they all converge on the same person. Grouping by owner
+    would have missed the burst entirely.
+    """
+    from app.operations.escalations import alert_on_missed_response_times
+    from app.rules import ALERT_BURST_LIMIT
+
+    owners = [
+        session.execute(
+            text("INSERT INTO staff (full_name, phone, role, password_hash) "
+                 "VALUES (:n, :p, 'coordinator', 'x') RETURNING staff_id"),
+            {"n": f"Owner {i}", "p": f"+25078000{7000 + i}"},
+        ).scalar_one()
+        for i in range(ALERT_BURST_LIMIT + 2)
+    ]
+    for owner in owners:
+        one_breached(session, owner)
+
+    result = alert_on_missed_response_times(session)
+    recipients = session.execute(
+        text("SELECT DISTINCT staff_id FROM messages WHERE staff_id IS NOT NULL")
+    ).scalars().all()
+    assert len(recipients) == 1, "the routing sends these to one person"
+    assert result["summarised"] == 1
+    assert len(alerts(session)) == 1
+
+
+def test_a_summarised_backlog_is_not_alerted_again(session, coordinator):
+    """Marking them is what stops the next run repeating the whole thing."""
+    from app.operations.escalations import alert_on_missed_response_times
+    from app.rules import ALERT_BURST_LIMIT
+
+    for _ in range(ALERT_BURST_LIMIT + 10):
+        one_breached(session, coordinator)
+
+    alert_on_missed_response_times(session)
+    again = alert_on_missed_response_times(session)
+    assert again["breached"] == 0
+    assert len(alerts(session)) == 1

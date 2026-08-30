@@ -284,6 +284,8 @@ def alert_on_missed_response_times(session: Session) -> dict:
     from app.messaging.outbox import queue
     from app.messaging.templates import render
 
+    from app.rules import ALERT_BURST_LIMIT
+
     breached = session.execute(
         text(
             """
@@ -300,7 +302,11 @@ def alert_on_missed_response_times(session: Session) -> dict:
         )
     ).mappings().all()
 
-    alerted, unroutable = 0, 0
+    # Grouped by who would be told, because the burst is per person: five
+    # breaches spread across five owners is five texts each getting one, and
+    # five landing on one phone is something else.
+    by_recipient: dict[UUID, list[dict]] = {}
+    unroutable = 0
     for row in breached:
         recipient = _breach_recipient(session, row["owner_staff_id"])
         if recipient is None:
@@ -308,28 +314,65 @@ def alert_on_missed_response_times(session: Session) -> dict:
             # is available. An alert nobody can receive is not "handled".
             unroutable += 1
             continue
+        by_recipient.setdefault(recipient, []).append(dict(row))
+
+    def mark(rows: list[dict]) -> None:
+        session.execute(
+            text("UPDATE escalations SET breach_alerted_at = clock_timestamp() "
+                 "WHERE escalation_id = ANY(:ids)"),
+            {"ids": [str(r["escalation_id"]) for r in rows]},
+        )
+
+    alerted, summarised = 0, 0
+    for recipient, rows in by_recipient.items():
+        if len(rows) <= ALERT_BURST_LIMIT:
+            for row in rows:
+                queue(
+                    session,
+                    template_key="escalation_breach",
+                    body=render(
+                        "escalation_breach",
+                        kind=row["kind"],
+                        raised=row["raised_at"].strftime("%d %b %H:%M"),
+                        respond_by=row["respond_by"].strftime("%d %b %H:%M"),
+                        link=f"/ui/#escalation-{row['escalation_id']}",
+                    ),
+                    staff_id=recipient,
+                )
+            mark(rows)
+            alerted += len(rows)
+            continue
+
+        # One message. It names the kinds and nothing else, exactly as the
+        # single alert does, gravest first so the first words are the ones
+        # that matter.
+        counts: dict[str, int] = {}
+        for row in rows:
+            counts[row["kind"]] = counts.get(row["kind"], 0) + 1
+        order = sorted(RESPONSE_TIMES, key=lambda k: RESPONSE_TIMES[k])
+        breakdown = ", ".join(
+            f"{counts[kind]} {kind}" for kind in order if kind in counts
+        )
+        oldest = min(r["respond_by"] for r in rows)
 
         queue(
             session,
-            template_key="escalation_breach",
+            template_key="escalation_breach_many",
             body=render(
-                "escalation_breach",
-                kind=row["kind"],
-                raised=row["raised_at"].strftime("%d %b %H:%M"),
-                respond_by=row["respond_by"].strftime("%d %b %H:%M"),
-                link=f"/ui/#escalation-{row['escalation_id']}",
+                "escalation_breach_many",
+                count=len(rows),
+                breakdown=breakdown,
+                oldest=oldest.strftime("%d %b %H:%M"),
+                link="/ui/",
             ),
             staff_id=recipient,
         )
-        session.execute(
-            text("UPDATE escalations SET breach_alerted_at = clock_timestamp() "
-                 "WHERE escalation_id = :eid"),
-            {"eid": str(row["escalation_id"])},
-        )
-        alerted += 1
+        mark(rows)
+        alerted += len(rows)
+        summarised += 1
 
     return {"alerted": alerted, "unroutable": unroutable,
-            "breached": len(breached)}
+            "breached": len(breached), "summarised": summarised}
 
 
 def _breach_recipient(session: Session, owner_staff_id) -> UUID | None:
