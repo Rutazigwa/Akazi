@@ -107,20 +107,36 @@
 
 <div class="card">
   <h2>Audit log integrity</h2>
-  {% if audit.intact %}
+  {% if not audit.checked %}
+  {#- Never verified is not the same as intact, and must not read like it. -#}
+  <p><span class="pill warn">never checked</span>
+    {{ audit.entries }} entries, head <code>{{ audit.head_hash[:16] }}…</code></p>
+  <p class="small">Nothing has verified this chain yet. Run
+    <code>scripts/verify_audit_chain.py</code> — it is the nightly job, and
+    until it has run once this page can say nothing about whether the log has
+    been tampered with.</p>
+  {% elif audit.checked.ever_broken %}
+  {#- A later passing run does not undo an earlier failure. -#}
+  <p><span class="pill bad">BROKEN</span> at entry
+    {{ audit.checked.broken_at }}: {{ audit.checked.reason }}</p>
+  <p class="small">This is a finding to investigate, never something to repair
+    by recomputing hashes — recomputing the chain is exactly what an attacker
+    would do. A later check passing does not clear this.</p>
+  {% else %}
   <p><span class="pill good">intact</span>
-    {{ audit.entries }} entries, head
-    <code>{{ audit.head_hash[:16] }}…</code></p>
+    {{ audit.checked.entries_checked }} entries checked
+    {% if audit.checked.hours_ago > 36 %}
+    <span class="pill bad">{{ audit.checked.hours_ago }}h ago</span>
+    {% else %}<span class="muted small">{{ audit.checked.hours_ago }}h ago</span>{% endif %},
+    head <code>{{ audit.head_hash[:16] }}…</code></p>
+  {% if audit.checked.hours_ago > 36 %}
+  <p class="small">The nightly check has not run since then. A verification
+    nobody has run for a week is not reassurance — look at the job heartbeat.</p>
+  {% endif %}
   <p class="small muted tight-b">
     Record that head hash somewhere off this server. The chain makes tampering
     detectable; a hash held elsewhere makes it undeniable.
   </p>
-  {% else %}
-  <p><span class="pill bad">BROKEN</span> at entry
-    {{ audit.broken_at.broken_at_audit_id }}: {{ audit.broken_at.reason }}</p>
-  <p class="small">This is a finding to investigate, never something to repair
-    by recomputing hashes — recomputing the chain is exactly what an attacker
-    would do.</p>
   {% endif %}
 </div>
 {% endblock %}

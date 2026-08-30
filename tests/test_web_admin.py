@@ -228,11 +228,48 @@ def test_you_cannot_deactivate_yourself(web, staff_login):
     assert "cannot deactivate your own account" in result.text
 
 
-def test_the_audit_chain_is_reported_on_the_staff_page(web, make_candidate):
+def test_an_unverified_chain_does_not_read_as_an_intact_one(web, make_candidate):
+    """Never checked is not the same as checked and fine.
+
+    Verification moved off this page -- it rehashes every row, 1,251ms at
+    182,000 entries, on a table that is never pruned -- so the card reports the
+    last recorded run. Before any run exists it must say so rather than
+    defaulting to reassurance.
+    """
     make_candidate()
     page = web.get("/ui/staff").text
     assert "Audit log integrity" in page
+    assert "never checked" in page
+    assert "intact" not in page
+
+
+def test_the_staff_page_reports_a_recorded_verification(web, session,
+                                                        make_candidate):
+    make_candidate()
+    session.execute(text("SELECT record_audit_verification()"))
+    page = web.get("/ui/staff").text
     assert "intact" in page
+    assert "entries checked" in page
+
+
+def test_a_later_pass_does_not_clear_an_earlier_break(web, session,
+                                                      make_candidate):
+    """Tampering does not stop being true because the next run came back clean.
+
+    Someone who breaks the chain and waits a day would otherwise see the page
+    go green again.
+    """
+    make_candidate()
+    session.execute(
+        text("INSERT INTO audit_verifications (entries_checked, intact, "
+             "broken_at, reason, duration_ms) "
+             "VALUES (10, false, 7, 'entry_hash does not match', 5)")
+    )
+    session.execute(text("SELECT record_audit_verification()"))
+
+    page = web.get("/ui/staff").text
+    assert "BROKEN" in page
+    assert "does not clear this" in page
 
 
 def test_staff_changes_are_audited(web, session):

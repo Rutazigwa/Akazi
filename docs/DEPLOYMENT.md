@@ -275,6 +275,36 @@ Only placements where the answer still changes something are chased — active
 ones, and completed ones that ended within a week. An employer asked about a
 shift that finished three weeks ago and was paid stops reading the messages.
 
+## Audit chain verification
+
+```bash
+17 3 * * *  cd /app && python scripts/verify_audit_chain.py
+```
+
+Every `audit_log` row carries the hash of the one before it, so altering or
+removing any row breaks every link after it. Checking that means walking the
+whole table and rehashing as it goes — measured at 432ms for 62,000 entries
+and 1,251ms for 182,000, roughly seven microseconds a row.
+
+`/ui/staff` used to do this on every render. `audit_log` grows on every
+identity read and is never pruned, deliberately, because it is the evidence
+produced if the NCSA asks — so the page reporting "the trail is intact" got
+slower forever, and at a million rows it would be a seven-second page load.
+Nobody would have diagnosed that from the page; they would have concluded the
+system was slow.
+
+Nightly, then, on its own heartbeat, with the result recorded. The staff page
+shows the last verification and how old it is, and says **never checked**
+rather than "intact" before the first run. A chain ever found broken keeps
+saying so — a later passing run does not clear it, because tampering does not
+stop being true because the next check came back clean.
+
+A non-zero exit means the chain is broken. That is a finding to investigate,
+never something to repair by recomputing hashes: recomputing the chain is
+exactly what an attacker would do. `GET /staff/audit-chain` still verifies on
+demand and records what it finds, so an answer somebody asked for joins the
+same history.
+
 ## Escalations that missed their response time
 
 ```bash

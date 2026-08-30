@@ -346,8 +346,13 @@ def staff_page(request: Request, session: SessionDep, staff: WebStaffDep):
         )
     ).mappings()
 
-    broken = session.execute(
-        text("SELECT * FROM verify_audit_chain()")
+    # The last recorded verification, not a fresh one. verify_audit_chain()
+    # rehashes every row -- 432ms at 62,000 entries, 1,251ms at 182,000 -- and
+    # audit_log is never pruned, so calling it here made this page slower
+    # forever. scripts/verify_audit_chain.py runs it nightly on its own
+    # heartbeat; what a coordinator needs to see is the result and its age.
+    checked = session.execute(
+        text("SELECT * FROM v_audit_chain_status")
     ).mappings().first()
     head = session.execute(
         text("SELECT * FROM audit_chain_head()")
@@ -367,8 +372,9 @@ def staff_page(request: Request, session: SessionDep, staff: WebStaffDep):
         people=[dict(p) for p in people],
         new_account=new_account,
         audit={
-            "intact": broken is None,
-            "broken_at": dict(broken) if broken else None,
+            # None means it has never been run, which is not the same as
+            # intact and must not read like it.
+            "checked": dict(checked) if checked else None,
             "entries": head["entries"] if head else 0,
             "head_hash": head["entry_hash"] if head else "",
         },

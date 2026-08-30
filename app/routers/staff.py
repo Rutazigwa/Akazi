@@ -261,16 +261,30 @@ def audit_integrity(session: SessionDep, admin: AdminDep):
     breaks every link after it. Publish `head_hash` somewhere off this server:
     once a hash is recorded elsewhere, no local rewrite of history can match it.
     """
-    broken = session.execute(
-        text("SELECT * FROM verify_audit_chain()")
-    ).mappings().first()
+    # Verified now, not read from the last nightly run: this route exists to
+    # be asked. It records what it finds, so an on-demand check joins the same
+    # history the /ui/staff card reports from -- a verification that happened
+    # and was thrown away is one nobody can point at afterwards.
+    #
+    # It walks the whole table, which is linear in audit_log and slow on a
+    # large one. That is the honest cost of asking, and why the page does not.
+    checked = session.execute(
+        text("SELECT * FROM record_audit_verification()")
+    ).mappings().one()
     head = session.execute(
         text("SELECT * FROM audit_chain_head()")
     ).mappings().first()
 
     return {
-        "intact": broken is None,
-        "broken_at": dict(broken) if broken else None,
+        "intact": checked["intact"],
+        "checked_at": checked["checked_at"],
+        "entries_checked": checked["entries_checked"],
+        "duration_ms": checked["duration_ms"],
+        "broken_at": (
+            {"broken_at_audit_id": checked["broken_at"],
+             "reason": checked["reason"]}
+            if not checked["intact"] else None
+        ),
         "entries": head["entries"] if head else 0,
         "head_audit_id": head["audit_id"] if head else None,
         "head_hash": head["entry_hash"] if head else None,
