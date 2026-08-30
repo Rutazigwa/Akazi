@@ -54,3 +54,18 @@ TARGET_WOMEN_PLACED = 0.45
 TARGET_REORDER_RATE = 0.40
 TARGET_PAY_ACCURACY = 0.95
 TARGET_DAYS_TO_FILL = 7
+
+
+# --- how much of a list a screen shows ------------------------------------
+#
+# Every dashboard list was unbounded. Measured on a database with a year of
+# operating in it -- 5,000 placements, 2,000 candidates -- the dashboard came
+# to 1,177 KB of HTML and 3,969 table rows, of which 3,590 were follow-ups due.
+# That is not a work queue, it is 90% of the page burying the hundred things
+# that need a response, and a coordinator opens it every morning on a phone.
+#
+# The lists are already ordered most-urgent-first, so a cap keeps the right
+# rows. What matters is that the screen says how many it is not showing: a
+# page silently displaying 25 of 3,590 is worse than a slow one.
+DASHBOARD_ROWS = 25
+REGISTRY_ROWS = 100

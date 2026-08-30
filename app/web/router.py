@@ -26,6 +26,7 @@ from sqlalchemy import text
 from app.auth import AuthError, login, logout
 from app.deps import SessionDep
 from app.matching.engine import summarise
+from app.rules import DASHBOARD_ROWS, REGISTRY_ROWS
 from app.matching.repository import find_cover_for, find_matches
 from app.messaging.inbound import needs_attention
 from app.mfa import MFAError, elevate_session
@@ -272,14 +273,15 @@ def dashboard(request: Request, session: SessionDep, staff: WebStaffDep):
     return _render(
         request, "dashboard.html", staff,
         nav="dashboard",
-        escalations=open_escalations(session),
+        escalations=open_escalations(session, limit=DASHBOARD_ROWS),
         unread_replies=needs_attention(session),
-        overdue_pay=overdue_pay(session),
+        overdue_pay=overdue_pay(session, limit=DASHBOARD_ROWS),
         guarantees=open_guarantees(session),
         # Silence is not success: an unrecorded no-show is a guarantee we
         # never knew we owed. See migration 045.
         unconfirmed=unconfirmed_attendance(session),
-        follow_ups=due_follow_ups(session, kigali_today()),
+        follow_ups=due_follow_ups(session, kigali_today(),
+                                  limit=DASHBOARD_ROWS),
         requests=open_requests(session),
         # The preventive half. Everything else on this page reports something
         # that has already gone wrong.
@@ -695,26 +697,36 @@ def change_tier(
 
 @router.get("/candidates", response_class=HTMLResponse)
 def candidates_page(request: Request, session: SessionDep, staff: WebStaffDep):
+    # The registry was every candidate, always: 2,000 rows and 1,464 KB of HTML
+    # on a database with a year in it, with no way to find anybody. A search
+    # box and a bound, and the page says what it is not showing.
+    search = (request.query_params.get("q") or "").strip()
     rows = session.execute(
         text(
             """
             SELECT c.candidate_id, c.display_name, c.district, c.sector,
                    c.status::text AS status,
-                   COALESCE(v.granted, false) AS placement_consent
+                   COALESCE(v.granted, false) AS placement_consent,
+                   count(*) OVER () AS total_rows
               FROM candidates c
               LEFT JOIN v_current_consent v
                      ON v.candidate_id = c.candidate_id AND v.purpose = 'placement'
+             WHERE :q = '' OR c.display_name ILIKE '%' || :q || '%'
              ORDER BY c.display_name
+             LIMIT :limit
             """
-        )
+        ),
+        {"q": search, "limit": REGISTRY_ROWS},
     ).mappings()
     return _render(
         request, "candidates.html", staff, nav="candidates",
         candidates=[dict(r) for r in rows],
+        search=search,
+        registry_limit=REGISTRY_ROWS,
         # Who is in the registry and not working. Somebody who never matches
         # never appears on a match page, so without this they are invisible
         # by construction. See migration 043.
-        queue=registry_queue(session),
+        queue=registry_queue(session, limit=DASHBOARD_ROWS),
         registry=registry_summary(session),
         **_flash(request),
     )

@@ -5,7 +5,13 @@
 
 {% if queue %}
 <div class="card">
-  <h2>Not working, and fixable ({{ queue|length }})</h2>
+{%- set q_total = queue[0].total_rows if queue else 0 -%}
+  <h2>Not working, and fixable ({{ q_total }})</h2>
+  {% if q_total > queue|length %}
+  <p class="small muted">Showing the {{ queue|length }} most blocked, longest
+    waiting first. {{ q_total - queue|length }} more are stuck behind something
+    fixable.</p>
+  {% endif %}
   <p class="small muted">
     {{ registry.blocked }} of {{ registry.in_registry }} people in the registry
     are stuck behind something we can fix; {{ registry.never_offered }} have
@@ -119,7 +125,20 @@
 {% endif %}
 
 <div class="card">
-  <h2>Registry ({{ candidates|length }})</h2>
+{%- set reg_total = candidates[0].total_rows if candidates else 0 -%}
+  <h2>Registry ({{ reg_total }})</h2>
+  <form method="get" action="/ui/candidates" class="act">
+    <input name="q" value="{{ search }}" placeholder="Find someone by name"
+           aria-label="Find someone by name">
+    <button class="secondary">Search</button>
+    {% if search %}<a class="small" href="/ui/candidates">Clear</a>{% endif %}
+  </form>
+  {% if reg_total > candidates|length %}
+  <p class="small muted">Showing {{ candidates|length }} of {{ reg_total }}.
+    Search by name to narrow it.</p>
+  {% elif search %}
+  <p class="small muted">{{ reg_total }} matching “{{ search }}”.</p>
+  {% endif %}
   <table>
     <tr><th>Name</th><th>District</th><th>Status</th><th>Consent</th></tr>
     {% for c in candidates %}

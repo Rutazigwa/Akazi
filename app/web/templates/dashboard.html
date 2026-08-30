@@ -7,7 +7,14 @@
    is money; a harassment report is a person who may still be at the site. #}
 {% if escalations %}
 <div class="card urgent">
-  <h2>Needs a response now — {{ escalations|length }}</h2>
+{%- set esc_total = escalations[0].total_rows if escalations else 0 -%}
+  <h2>Needs a response now — {{ esc_total }}</h2>
+  {% if esc_total > escalations|length %}
+  <p class="small muted">Showing {{ escalations|length }} of {{ esc_total }},
+    gravest kind first and then soonest deadline — harassment before safety
+    before pay. Old breached pay issues cannot push a new harassment report
+    off this list.</p>
+  {% endif %}
   <table>
     <tr><th>Kind</th><th>Who</th><th>Where</th><th>Owner</th><th>Respond by</th><th></th></tr>
     {% for e in escalations %}
@@ -191,7 +198,12 @@
 
 {% if overdue_pay %}
 <div class="card urgent">
-  <h2>Pay overdue — {{ overdue_pay|length }}</h2>
+{%- set pay_total = overdue_pay[0].total_rows if overdue_pay else 0 -%}
+  <h2>Pay overdue — {{ pay_total }}</h2>
+  {% if pay_total > overdue_pay|length %}
+  <p class="small muted">Showing the {{ overdue_pay|length }} oldest and
+    largest. {{ pay_total - overdue_pay|length }} more are overdue.</p>
+  {% endif %}
   <table>
     <tr><th>Worker</th><th>Employer</th><th class="num">Net RWF</th><th>Was due</th><th class="num">Days late</th><th></th></tr>
     {% for o in overdue_pay %}
@@ -211,7 +223,13 @@
 {% endif %}
 
 <div class="card">
-  <h2>Follow-ups due ({{ follow_ups|length }})</h2>
+{%- set fu_total = follow_ups[0].total_rows if follow_ups else 0 -%}
+  <h2>Follow-ups due ({{ fu_total }})</h2>
+  {% if fu_total > follow_ups|length %}
+  <p class="small muted">Showing the {{ follow_ups|length }} most overdue.
+    {{ fu_total - follow_ups|length }} more are due — this list is ordered
+    oldest first, so these are the ones about to cost a retention number.</p>
+  {% endif %}
   {% if follow_ups %}
   <table>
     <tr><th>Checkpoint</th><th>Worker</th><th>Employer</th><th>Due</th><th class="num">Overdue</th><th></th></tr>

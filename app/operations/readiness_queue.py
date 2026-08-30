@@ -68,8 +68,16 @@ def _blockers(row: dict, today: date) -> list[str]:
     return found
 
 
-def registry_queue(session: Session, today: date | None = None) -> list[dict]:
-    """Everyone with something fixable, in the order to work through them."""
+def registry_queue(
+    session: Session, today: date | None = None, limit: int | None = None
+) -> list[dict]:
+    """Everyone with something fixable, in the order to work through them.
+
+    The ranking is computed in Python -- the number of blockers is not a column
+    -- so the bound is applied after the sort rather than in SQL. Each returned
+    record carries total_rows, because the screen showed 2,000 of these and a
+    coordinator cannot work through 2,000 of anything.
+    """
     from app.clock import kigali_today
 
     today = today or kigali_today()
@@ -85,6 +93,12 @@ def registry_queue(session: Session, today: date | None = None) -> list[dict]:
     # Most blocked first, then longest waiting: somebody with three missing
     # things has had three chances to be noticed and was missed each time.
     queue.sort(key=lambda r: (-len(r["blockers"]), r["created_at"]))
+
+    total = len(queue)
+    if limit is not None:
+        queue = queue[:limit]
+    for record in queue:
+        record["total_rows"] = total
     return queue
 
 

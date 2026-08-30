@@ -188,12 +188,15 @@ def resolve(
         raise EscalationError("this escalation is already closed")
 
 
-def open_escalations(session: Session) -> list[dict]:
+def open_escalations(
+    session: Session, limit: int | None = None
+) -> list[dict]:
     """Most urgent first, by deadline rather than by when it arrived."""
     rows = session.execute(
         text(
             """
-            SELECT e.escalation_id, e.kind::text AS kind, e.status::text AS status,
+            SELECT count(*) OVER () AS total_rows,
+                   e.escalation_id, e.kind::text AS kind, e.status::text AS status,
                    e.raised_at, e.respond_by, e.detail,
                    (now() > e.respond_by AND e.acknowledged_at IS NULL) AS overdue,
                    c.display_name, s.full_name AS owner_name,
@@ -205,9 +208,29 @@ def open_escalations(session: Session) -> list[dict]:
               LEFT JOIN work_requests wr ON wr.request_id = p.request_id
               LEFT JOIN employers emp ON emp.employer_id = wr.employer_id
              WHERE e.status IN ('open','acknowledged')
-             ORDER BY e.respond_by ASC
+             -- Gravest kind first, then soonest deadline.
+             --
+             -- Ordering by deadline alone was fine while the list was
+             -- unbounded, because everything appeared. Once it is capped it is
+             -- not: seventy-five pay issues that breached weeks ago all have
+             -- earlier deadlines than a harassment report raised this morning,
+             -- and would push it off the screen. The bound is what makes the
+             -- ordering safety-critical.
+             --
+             -- The rank mirrors RESPONSE_TIMES -- harassment 2h, safety 4h,
+             -- pay 24h, the rest 48h -- and tests/test_bounded_lists.py holds
+             -- the two together.
+             ORDER BY CASE e.kind
+                        WHEN 'harassment' THEN 0
+                        WHEN 'safety'     THEN 1
+                        WHEN 'pay'        THEN 2
+                        ELSE 3
+                      END,
+                      e.respond_by ASC
+             LIMIT :limit
             """
-        )
+        ),
+        {"limit": limit},
     ).mappings()
     return [dict(r) for r in rows]
 

@@ -64,12 +64,19 @@ def schedule_follow_ups(
     return schedule
 
 
-def due_follow_ups(session: Session, as_of: date) -> list[dict]:
+def due_follow_ups(
+    session: Session, as_of: date, limit: int | None = None
+) -> list[dict]:
     """The coordinator's work queue, most overdue first.
 
     Ordered by due date rather than by placement so the oldest unanswered
     check-in surfaces first -- an overdue day_30 is a retention number we are
     about to lose.
+
+    Each row carries total_rows, the count before the limit, so a screen
+    showing the first 25 of 3,590 can say so. count(*) OVER () rather than a
+    second query: one round trip, and the total is from the same snapshot as
+    the rows.
     """
     rows = session.execute(
         text(
@@ -80,7 +87,8 @@ def due_follow_ups(session: Session, as_of: date) -> list[dict]:
                    f.due_on,
                    (CAST(:as_of AS date) - f.due_on) AS days_overdue,
                    c.display_name,
-                   e.business_name
+                   e.business_name,
+                   count(*) OVER () AS total_rows
             FROM follow_ups f
             JOIN placements p     ON p.placement_id = f.placement_id
             JOIN candidates c     ON c.candidate_id = p.candidate_id
@@ -89,9 +97,10 @@ def due_follow_ups(session: Session, as_of: date) -> list[dict]:
             WHERE f.completed_at IS NULL
               AND f.due_on <= :as_of
             ORDER BY f.due_on ASC
+            LIMIT :limit
             """
         ),
-        {"as_of": as_of},
+        {"as_of": as_of, "limit": limit},
     ).mappings()
     return [dict(r) for r in rows]
 

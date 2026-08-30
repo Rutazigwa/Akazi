@@ -319,11 +319,14 @@ def confirm_with_worker(
     )
 
 
-def overdue_pay(session: Session, as_of: date | None = None) -> list[dict]:
+def overdue_pay(
+    session: Session, as_of: date | None = None, limit: int | None = None
+) -> list[dict]:
     """Pay past its agreed date with no payment recorded. The chase list.
 
     Ordered by how much and how late: the biggest oldest debt is the
-    relationship most at risk, on both sides.
+    relationship most at risk, on both sides. Each row carries total_rows so a
+    capped screen can say how many it is not showing.
     """
     rows = session.execute(
         text(
@@ -331,7 +334,8 @@ def overdue_pay(session: Session, as_of: date | None = None) -> list[dict]:
             SELECT pr.pay_id, pr.placement_id, pr.period_start, pr.period_end,
                    pr.net_rwf, pr.due_on,
                    (CAST(:as_of AS date) - pr.due_on) AS days_overdue,
-                   c.display_name, e.business_name
+                   c.display_name, e.business_name,
+                   count(*) OVER () AS total_rows
               FROM pay_records pr
               JOIN placements p     ON p.placement_id = pr.placement_id
               JOIN candidates c     ON c.candidate_id = p.candidate_id
@@ -339,9 +343,10 @@ def overdue_pay(session: Session, as_of: date | None = None) -> list[dict]:
               JOIN employers e      ON e.employer_id = wr.employer_id
              WHERE pr.paid_on IS NULL AND pr.due_on < CAST(:as_of AS date)
              ORDER BY pr.due_on ASC, pr.net_rwf DESC
+             LIMIT :limit
             """
         ),
-        {"as_of": as_of or kigali_today()},
+        {"as_of": as_of or kigali_today(), "limit": limit},
     ).mappings()
     return [dict(r) for r in rows]
 
