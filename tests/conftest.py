@@ -227,10 +227,14 @@ def make_candidate(session, staff_id):
             {"cid": cid, "name": name, "gender": gender, "staff": staff_id},
         )
         if consented:
+            # Both, as registration records them: agreeing to be placed, and
+            # the after-dark answer. The second is recorded even when it is no
+            # -- an absent row is indistinguishable from never having asked.
             session.execute(
                 text("INSERT INTO consent_records (candidate_id, policy_version, "
                      "purpose, granted, captured_via, captured_by) "
-                     "VALUES (:cid, 'v1.0', 'placement', true, 'paper', :staff)"),
+                     "VALUES (:cid, 'v1.0', 'placement', true, 'paper', :staff), "
+                     "       (:cid, 'v1.0', 'after_dark', false, 'paper', :staff)"),
                 {"cid": cid, "staff": staff_id},
             )
         return cid

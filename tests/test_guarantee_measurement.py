@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import text
 
 from app.clock import KIGALI, kigali_today
+from app.operations.registry import record_consent
 from app.operations.attendance import (
     log_attendance,
     open_guarantees,
@@ -219,7 +220,8 @@ def test_cover_after_dark_without_an_opt_in_is_refused(
 
 
 def test_her_own_opt_in_is_what_permits_it(session, make_placement,
-                                           make_candidate, make_request):
+                                           make_candidate, make_request,
+                                           staff_id):
     """Guards the guard, and says who may decide.
 
     The opt-in belongs to the candidate. A coordinator cannot consent on her
@@ -228,11 +230,10 @@ def test_her_own_opt_in_is_what_permits_it(session, make_placement,
     """
     pid = after_dark_no_show(session, make_placement, make_candidate, make_request)
     opted = make_candidate(name="Opted In", gender="F")
-    session.execute(
-        text("UPDATE candidates SET accepts_after_dark = true "
-             "WHERE candidate_id = :c"),
-        {"c": str(opted)},
-    )
+    # Recorded, not set. The column is gone: an opt-in has to say when she gave
+    # it and who wrote it down, and has to be withdrawable.
+    record_consent(session, opted, purpose="after_dark", granted=True,
+                   captured_via="paper", captured_by=staff_id)
     cover = record_replacement(session, pid, opted, "she has opted in")
     assert cover is not None
 
@@ -267,3 +268,49 @@ def test_a_shift_that_has_already_ended_still_checks_the_person(
     with pytest.raises(Exception, match="no consent on record"):
         record_replacement(session, pid, make_candidate(name="Late", consented=False),
                            "recorded after the shift ended")
+
+
+def test_she_can_withdraw_the_opt_in(session, make_placement, make_candidate,
+                                     make_request, staff_id):
+    """The direction that matters most, and the one that was impossible.
+
+    accepts_after_dark was a boolean set once at registration with no update
+    path anywhere in the application. Somebody who said yes could never take it
+    back. A safety consent that cannot be revoked is not a consent.
+    """
+    woman = make_candidate(name="Changed Her Mind", gender="F")
+    record_consent(session, woman, purpose="after_dark", granted=True,
+                   captured_via="paper", captured_by=staff_id)
+
+    first = after_dark_no_show(session, make_placement, make_candidate, make_request)
+    assert record_replacement(session, first, woman, "she has opted in")
+
+    record_consent(session, woman, purpose="after_dark", granted=False,
+                   captured_via="whatsapp", captured_by=staff_id)
+
+    second = after_dark_no_show(session, make_placement, make_candidate, make_request)
+    with pytest.raises(Exception, match="after dark"):
+        record_replacement(session, second, woman, "she has not")
+
+
+def test_the_history_of_what_she_agreed_to_survives(session, make_candidate,
+                                                    staff_id):
+    """"Did she agree to that, and when?" is the question this exists to
+    answer, and it is asked after something has happened."""
+    woman = make_candidate(name="History", gender="F")
+    record_consent(session, woman, purpose="after_dark", granted=True,
+                   captured_via="paper", captured_by=staff_id)
+    record_consent(session, woman, purpose="after_dark", granted=False,
+                   captured_via="whatsapp", captured_by=staff_id)
+
+    history = session.execute(
+        text("SELECT granted, captured_via, captured_at FROM consent_records "
+             "WHERE candidate_id = :c AND purpose = 'after_dark' "
+             "ORDER BY captured_at"),
+        {"c": str(woman)},
+    ).mappings().all()
+
+    # Registration's row, then the grant, then the withdrawal. Nothing is
+    # overwritten -- the table refuses updates outright.
+    assert [r["granted"] for r in history] == [False, True, False]
+    assert all(r["captured_at"] is not None for r in history)

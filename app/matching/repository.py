@@ -102,7 +102,9 @@ SELECT c.candidate_id,
        obs.median_rwf   AS observed_rwf,
        obs.median_min   AS observed_min,
        c.max_commute_min,
-       c.accepts_after_dark,
+       -- The current consent row, not a column: the opt-in is hers to
+       -- withdraw, and a boolean could not say when she gave it.
+       accepts_after_dark(c.candidate_id) AS accepts_after_dark,
        COALESCE(consent.granted, false) AS has_placement_consent,
        COALESCE(prior.completed_with_employer, 0) AS completed_with_employer,
        COALESCE(retention.rate, 0.0)              AS retention_30day_rate,

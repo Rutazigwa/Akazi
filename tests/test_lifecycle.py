@@ -263,17 +263,22 @@ def test_an_under_16_registration_is_refused(client):
 
 
 def test_consent_is_captured_at_intake(client, session):
+    """Two consents, both recorded: to be placed, and to shifts ending after
+    dark. The second is recorded even when the answer is no -- an absent row
+    would be indistinguishable from never having asked her."""
     cid = register_candidate(client, "Esperance", NEARBY)
-    row = session.execute(
-        text(
-            "SELECT policy_version, purpose, granted, captured_via "
-            "FROM consent_records WHERE candidate_id = :cid"
-        ),
-        {"cid": cid},
-    ).mappings().one()
-    assert row["granted"] is True
-    assert row["purpose"] == "placement"
-    assert row["policy_version"] == "v1.0"
+    rows = {
+        r["purpose"]: r
+        for r in session.execute(
+            text("SELECT policy_version, purpose, granted, captured_via "
+                 "FROM consent_records WHERE candidate_id = :cid"),
+            {"cid": cid},
+        ).mappings()
+    }
+    assert set(rows) == {"placement", "after_dark"}
+    assert rows["placement"]["granted"] is True
+    assert rows["placement"]["policy_version"] == "v1.0"
+    assert rows["after_dark"]["captured_via"] == rows["placement"]["captured_via"]
 
 
 def test_the_candidate_list_exposes_no_identity_data(client):

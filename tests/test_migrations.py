@@ -130,3 +130,74 @@ def test_baseline_records_without_running(scratch_db):
     finally:
         engine.dispose()
     assert exists is None, "baseline must record, never execute"
+
+
+# How many of the most recent migrations to run against seeded data. Wide
+# enough to cover the ones that transform what is already there.
+STOP_SHORT = 6
+
+
+def test_the_last_migrations_run_against_a_database_with_people_in_it(scratch_db):
+    """An empty database exercises no backfill.
+
+    Migration 056 moved the after-dark opt-in out of a boolean and into a
+    consent record, backfilling the existing values. It applied cleanly to
+    every empty test database and would have aborted on the first real one:
+    the backfilled rows violated a CHECK on captured_via, and with no
+    candidates there were no rows to violate it.
+
+    That is the shape of the whole class -- a migration that transforms data is
+    tested by the data, and there was none. So this one applies everything up
+    to the last few, puts a candidate and a placement in, and only then runs
+    the rest.
+    """
+    import uuid
+
+    files = sorted((Path(__file__).parent.parent / "migrations").glob("*.sql"))
+    db = scratch_db
+    if True:
+        engine = create_engine(
+            db.replace("postgresql://", "postgresql+psycopg://"),
+            isolation_level="AUTOCOMMIT",
+        )
+        with engine.connect() as conn:
+            conn.execute(
+                text("CREATE TABLE IF NOT EXISTS schema_migrations ("
+                     "  filename TEXT PRIMARY KEY,"
+                     "  applied_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp())")
+            )
+        engine.dispose()
+
+        for path in files[:-STOP_SHORT]:
+            result = subprocess.run(
+                ["psql", db, "-q", "-v", "ON_ERROR_STOP=1", "-f", str(path)],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, f"{path.name}: {result.stderr}"
+            subprocess.run(
+                ["psql", db, "-q", "-v", "ON_ERROR_STOP=1", "-c",
+                 f"INSERT INTO schema_migrations (filename) VALUES ('{path.name}')"],
+                check=True, capture_output=True,
+            )
+
+        seeded = subprocess.run(
+            ["psql", db, "-q", "-v", "ON_ERROR_STOP=1", "-c", f"""
+            INSERT INTO staff (full_name, phone, role, password_hash)
+              VALUES ('Owner', '+250780000001', 'owner', 'x');
+            INSERT INTO candidate_identity (candidate_id, legal_first_name,
+                     legal_last_name, national_id, date_of_birth, phone_primary)
+              VALUES ('{uuid.uuid4()}', 'Ancienne', 'Record', 'NID-OLD',
+                      kigali_today() - 8000, '+250788000111');
+            INSERT INTO candidates (candidate_id, display_name, gender, district,
+                     sector, registered_by)
+              SELECT candidate_id, 'Ancienne R.', 'F', 'Gasabo', 'Remera',
+                     (SELECT staff_id FROM staff LIMIT 1)
+                FROM candidate_identity;
+            """],
+            capture_output=True, text=True,
+        )
+        assert seeded.returncode == 0, seeded.stderr
+
+        output = run(db)
+        assert f"applied {STOP_SHORT}," in output, output
+        assert len(applied(db)) == MIGRATION_COUNT

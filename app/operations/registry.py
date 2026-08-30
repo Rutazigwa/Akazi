@@ -222,10 +222,10 @@ def register_candidate(
                 (candidate_id, display_name, gender, district, sector, cell,
                  home_lat, home_lng, education_level, languages, has_smartphone,
                  momo_registered, max_commute_rwf, max_commute_min,
-                 accepts_after_dark, registered_by)
+                 registered_by)
             VALUES (:cid, :display, :gender, :district, :sector, :cell,
                     :lat, :lng, :education, :languages, :smartphone,
-                    :momo, :max_rwf, :max_min, :after_dark, :by)
+                    :momo, :max_rwf, :max_min, :by)
             """
         ),
         {
@@ -243,16 +243,31 @@ def register_candidate(
             "momo": momo_registered,
             "max_rwf": max_commute_rwf,
             "max_min": max_commute_min,
-            "after_dark": accepts_after_dark,
             "by": str(registered_by),
         },
     )
 
+    # The after-dark opt-in is a consent, not a profile field: hers to give and
+    # hers to withdraw, and it has to say when and who wrote it down. Recorded
+    # either way -- a "no" is as much a fact about what she agreed to as a
+    # "yes", and a missing row would be indistinguishable from never asking.
     record_consent(
         session,
         candidate_id,
         purpose="placement",
         granted=True,
+        captured_via=consent_captured_via,
+        captured_by=registered_by,
+    )
+
+    # Recorded either way. A "no" is as much a fact about what she agreed to as
+    # a "yes", and a missing row would be indistinguishable from never having
+    # asked her.
+    record_consent(
+        session,
+        candidate_id,
+        purpose="after_dark",
+        granted=accepts_after_dark,
         captured_via=consent_captured_via,
         captured_by=registered_by,
     )
