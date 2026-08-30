@@ -3,6 +3,22 @@
 {% block body %}
 <h1>Employers</h1>
 
+{%- set emp_total = employers[0].total_rows if employers else 0 %}
+<div class="card">
+  <form method="get" action="/ui/employers" class="act">
+    <input name="q" value="{{ search }}" placeholder="Find a business by name"
+           aria-label="Find a business by name">
+    <button class="secondary">Search</button>
+    {% if search %}<a class="small" href="/ui/employers">Clear</a>{% endif %}
+  </form>
+  {% if emp_total > employers|length %}
+  <p class="small muted tight-b">Showing {{ employers|length }} of
+    {{ emp_total }}, active and pilot first. Search by name to narrow it.</p>
+  {% elif search %}
+  <p class="small muted tight-b">{{ emp_total }} matching “{{ search }}”.</p>
+  {% endif %}
+</div>
+
 {% if new_account %}
 <div class="card outline-accent">
   <h2>{{ new_account.label }}</h2>

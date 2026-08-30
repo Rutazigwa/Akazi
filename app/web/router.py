@@ -577,31 +577,60 @@ def reports_page(request: Request, session: SessionDep, staff: WebStaffDep):
 
 # --- employers -------------------------------------------------------------
 
-def _employers(session):
+def _employers(session, search: str = "", limit: int | None = None):
+    """The employer list, optionally narrowed and bounded.
+
+    Measured at ten times the plausible ceiling -- 400 employers with three
+    contacts each -- the page was 824 KB and 801 rows. Active employers stay
+    few by the nature of the business (the pilot targets ten), but prospects
+    accumulate: twenty to thirty interviews a district, across districts, for
+    years. Those are the rows that pile up, and they are the least interesting
+    ones to scroll past.
+    """
     return [
         dict(r)
         for r in session.execute(
             text(
                 "SELECT employer_id, business_name, sector, district, "
-                "       tier::text AS tier, is_cooperative "
-                "FROM employers ORDER BY business_name"
-            )
+                "       tier::text AS tier, is_cooperative, "
+                "       count(*) OVER () AS total_rows "
+                "FROM employers "
+                "WHERE :q = '' OR business_name ILIKE '%' || :q || '%' "
+                "ORDER BY "
+                # Whoever we are actually working with, first. A page of
+                # prospects from last year is not the employer list somebody
+                # opened this page to see.
+                "  CASE tier WHEN 'active' THEN 0 WHEN 'pilot' THEN 1 "
+                "            WHEN 'prospect' THEN 2 ELSE 3 END, "
+                "  business_name "
+                "LIMIT :limit"
+            ),
+            {"q": search, "limit": limit},
         ).mappings()
     ]
 
 
 @router.get("/employers", response_class=HTMLResponse)
 def employers_page(request: Request, session: SessionDep, staff: WebStaffDep):
+    search = (request.query_params.get("q") or "").strip()
+    employers = _employers(session, search, limit=REGISTRY_ROWS)
+
+    # Only the contacts of the employers actually on the page. This used to
+    # fetch every contact of every employer and then group them, so the work
+    # grew with the register rather than with the screen -- 1,200 rows loaded
+    # to render 100.
+    shown = [str(e["employer_id"]) for e in employers]
     contacts = session.execute(
         text(
             """
             SELECT employer_id, contact_id, full_name, phone, is_primary,
                    (password_hash IS NOT NULL) AS has_login
               FROM employer_contacts
-             WHERE is_active
+             WHERE is_active AND employer_id = ANY(:ids)
              ORDER BY is_primary DESC, full_name
             """
-        )
+        ),
+        {"ids": shown},
     ).mappings()
     grouped: dict = {}
     for row in contacts:
@@ -616,7 +645,8 @@ def employers_page(request: Request, session: SessionDep, staff: WebStaffDep):
 
     return _render(
         request, "employers.html", staff, nav="employers",
-        employers=_employers(session), contacts=grouped,
+        employers=employers, contacts=grouped,
+        search=search,
         # What the operating record says about each of them. Only employers
         # with something to answer for; the rest are quietly fine.
         health={e["employer_id"]: e

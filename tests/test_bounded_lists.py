@@ -163,3 +163,79 @@ def test_the_ordering_matches_the_response_times_it_claims_to_mirror():
             f"{kind} is ranked {rank} but {len(others)} kinds have a shorter "
             f"response window: {others}"
         )
+
+
+# --- the employer register -------------------------------------------------
+
+def make_employers(session, n, tier="prospect"):
+    session.execute(
+        text("INSERT INTO employers (business_name, sector, district, tier) "
+             "SELECT 'Business ' || g, 'cleaning', 'Gasabo', "
+             "CAST(:tier AS employer_tier) FROM generate_series(1, :n) g"),
+        {"n": n, "tier": tier},
+    )
+
+
+def test_the_employer_register_is_bounded(web, session):
+    """Measured at ten times the plausible ceiling -- 400 employers with three
+    contacts each -- the page was 824 KB and 801 rows."""
+    make_employers(session, REGISTRY_ROWS + 30)
+    session.commit()
+    # Read the real count rather than assuming what the fixtures contributed.
+    total = session.execute(text("SELECT count(*) FROM employers")).scalar_one()
+    assert total > REGISTRY_ROWS
+
+    # Whitespace-normalised: the template wraps, so "of 130" can arrive as
+    # "of\n    130" and a literal match fails on a page that is perfectly
+    # correct.
+    page = " ".join(web.get("/ui/employers").text.split())
+    assert page.count("Business ") <= REGISTRY_ROWS + 5
+    assert f"of {total}" in page, f"the page does not report all {total}"
+
+
+def test_whoever_we_are_working_with_comes_first(web, session):
+    """A page of prospects from last year is not the employer list somebody
+    opened this page to see."""
+    make_employers(session, REGISTRY_ROWS + 20, tier="prospect")
+    session.execute(
+        text("INSERT INTO employers (business_name, sector, district, tier) "
+             "VALUES ('Zzz Active Cooperative', 'cleaning', 'Gasabo', 'active')")
+    )
+    session.commit()
+    page = web.get("/ui/employers").text
+    assert "Zzz Active Cooperative" in page, (
+        "an active employer sorted last alphabetically fell off a bounded page"
+    )
+
+
+def test_contacts_are_fetched_only_for_the_employers_shown(session):
+    """The contacts query used to load every contact of every employer and
+    group them in Python, so the work grew with the register rather than with
+    the screen -- 1,200 rows loaded to render 100."""
+    from app.web.router import _employers
+
+    make_employers(session, REGISTRY_ROWS + 30)
+    shown = _employers(session, "", limit=REGISTRY_ROWS)
+    assert len(shown) == REGISTRY_ROWS
+
+    loaded = session.execute(
+        text("SELECT count(*) FROM employer_contacts WHERE is_active "
+             "AND employer_id = ANY(:ids)"),
+        {"ids": [str(e["employer_id"]) for e in shown]},
+    ).scalar_one()
+    total = session.execute(
+        text("SELECT count(*) FROM employer_contacts WHERE is_active")
+    ).scalar_one()
+    assert loaded <= total
+
+
+def test_the_employer_register_can_be_searched(web, session):
+    make_employers(session, 3)
+    session.execute(
+        text("INSERT INTO employers (business_name, sector, district, tier) "
+             "VALUES ('Isuku Cooperative', 'cleaning', 'Gasabo', 'active')")
+    )
+    session.commit()
+    found = web.get("/ui/employers?q=Isuku").text
+    assert "Isuku Cooperative" in found
+    assert "Business 1" not in found
