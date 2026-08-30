@@ -332,3 +332,35 @@ def find_cover_for(session, placement_id, now=None):
         if c.candidate_id != row["candidate_id"]
     ]
     return find_cover(pool, context.request, now=now)
+
+
+def cover_rights_exclusion(session, placement_id, candidate_id):
+    """Why this specific person may not cover this shift, clock aside.
+
+    Asked by the write path. find_cover answers "who could still get there",
+    which is a question about the time of day and returns nothing at all once
+    the window has closed -- so it cannot be used to check whether a particular
+    person is allowed to be sent.
+    """
+    from app.matching.cover import rights_exclusion
+
+    row = session.execute(
+        text("SELECT request_id FROM placements WHERE placement_id = :pid"),
+        {"pid": str(placement_id)},
+    ).mappings().first()
+    if row is None:
+        raise LookupError(f"no such placement {placement_id}")
+
+    context = load_request(session, row["request_id"])
+    candidate = next(
+        (c for c in load_candidates(session, context)
+         if c.candidate_id == candidate_id),
+        None,
+    )
+    if candidate is None:
+        # Not in the pool at all: no consent record, or erased. Loading it
+        # returns nothing rather than an exclusion, and silence here would be
+        # read as approval.
+        return ("hard exclusion", "not in the candidate pool for this request")
+
+    return rights_exclusion(candidate, context.request)

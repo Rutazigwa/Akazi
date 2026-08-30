@@ -528,6 +528,15 @@ def test_only_one_cover_is_sent_for_one_no_show(live_db):
                 ),
                 {"c": cid, "d": f"Cover{n}"},
             )
+            # Consent, because a cover candidate without it is refused now --
+            # covering a shift does not suspend the filters, and this test is
+            # about the race, not about the filters.
+            conn.execute(
+                text("INSERT INTO consent_records (candidate_id, policy_version, "
+                     "purpose, granted, captured_via, captured_by) "
+                     "VALUES (:c, 'v1.0', 'placement', true, 'paper', :s)"),
+                {"c": cid, "s": str(live_db["staff"])},
+            )
             covers.append(cid)
     engine.dispose()
 

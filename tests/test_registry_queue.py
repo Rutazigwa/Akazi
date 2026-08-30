@@ -58,7 +58,7 @@ def blockers_for(session, candidate_id):
 # --- what stops somebody ---------------------------------------------------
 
 def test_no_consent_is_listed(session, make_candidate, staff_id):
-    candidate_id = make_candidate()
+    candidate_id = make_candidate(consented=False)
     assert any("no consent" in b for b in blockers_for(session, candidate_id))
 
 

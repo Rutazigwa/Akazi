@@ -26,14 +26,14 @@ def current(session, candidate_id, purpose="placement"):
 
 def test_withdrawal_in_the_same_transaction_wins(session, make_candidate, staff_id):
     """The regression. Both rows share captured_at; recorded_seq breaks the tie."""
-    cid = make_candidate()
+    cid = make_candidate(consented=False)
     record_consent(session, cid, "placement", True, "paper", staff_id)
     record_consent(session, cid, "placement", False, "whatsapp", staff_id)
     assert current(session, cid) is False
 
 
 def test_re_granting_after_a_withdrawal_wins_again(session, make_candidate, staff_id):
-    cid = make_candidate()
+    cid = make_candidate(consented=False)
     record_consent(session, cid, "placement", True, "paper", staff_id)
     record_consent(session, cid, "placement", False, "whatsapp", staff_id)
     record_consent(session, cid, "placement", True, "whatsapp", staff_id)
@@ -41,7 +41,7 @@ def test_re_granting_after_a_withdrawal_wins_again(session, make_candidate, staf
 
 
 def test_purposes_are_tracked_independently(session, make_candidate, staff_id):
-    cid = make_candidate()
+    cid = make_candidate(consented=False)
     record_consent(session, cid, "placement", True, "paper", staff_id)
     record_consent(session, cid, "reporting", False, "paper", staff_id)
     assert current(session, cid, "placement") is True
@@ -49,7 +49,7 @@ def test_purposes_are_tracked_independently(session, make_candidate, staff_id):
 
 
 def test_history_is_preserved_not_overwritten(session, make_candidate, staff_id):
-    cid = make_candidate()
+    cid = make_candidate(consented=False)
     record_consent(session, cid, "placement", True, "paper", staff_id)
     record_consent(session, cid, "placement", False, "whatsapp", staff_id)
 
@@ -64,7 +64,7 @@ def test_history_is_preserved_not_overwritten(session, make_candidate, staff_id)
 
 
 def test_consent_rows_cannot_be_updated_or_deleted(session, make_candidate, staff_id):
-    cid = make_candidate()
+    cid = make_candidate(consented=False)
     record_consent(session, cid, "placement", True, "paper", staff_id)
 
     session.execute(text("UPDATE consent_records SET granted = false"))
@@ -79,7 +79,7 @@ def test_consent_rows_cannot_be_updated_or_deleted(session, make_candidate, staf
 
 def test_the_policy_version_is_recorded(session, make_candidate, staff_id):
     """We must be able to prove what someone agreed to, not just that they did."""
-    cid = make_candidate()
+    cid = make_candidate(consented=False)
     record_consent(session, cid, "placement", True, "paper", staff_id,
                    policy_version="v2.1")
     version = session.execute(

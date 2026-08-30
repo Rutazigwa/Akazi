@@ -182,8 +182,19 @@ def staff_id(session) -> uuid.UUID:
 
 @pytest.fixture
 def make_candidate(session, staff_id):
-    def _make(gender: str = "F", age_years: int = 22, name: str = "Test Worker"):
-        """A registered candidate, with no availability stated.
+    def _make(gender: str = "F", age_years: int = 22, name: str = "Test Worker",
+              consented: bool = True):
+        """A registered candidate who has consented to placement.
+
+        Consent is on by default because registration captures it -- a
+        candidate in the real system without a consent record is one nobody
+        may place, and a fixture producing them by default had most of this
+        suite exercising a state the application does not create. Pass
+        consented=False for the tests that are about its absence.
+
+        Unlike availability, this cannot collide: consent_records is
+        append-only with no uniqueness constraint and the latest row wins, so
+        a test recording its own consent afterwards simply overrides this.
 
         Availability is left to each test to declare, because several of them
         turn on exactly which windows exist. Note that a candidate with none
@@ -215,6 +226,13 @@ def make_candidate(session, staff_id):
             ),
             {"cid": cid, "name": name, "gender": gender, "staff": staff_id},
         )
+        if consented:
+            session.execute(
+                text("INSERT INTO consent_records (candidate_id, policy_version, "
+                     "purpose, granted, captured_via, captured_by) "
+                     "VALUES (:cid, 'v1.0', 'placement', true, 'paper', :staff)"),
+                {"cid": cid, "staff": staff_id},
+            )
         return cid
 
     return _make

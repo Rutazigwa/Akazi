@@ -177,3 +177,93 @@ def test_the_dashboard_says_who_has_been_asked(web, session, make_placement,
     page = " ".join(web.get("/ui/").text.split())
     assert "asked Chantal" in page
     assert "waiting for a reply" in page
+
+
+# --- covering a shift does not suspend the filters -------------------------
+
+def after_dark_no_show(session, make_placement, make_candidate, make_request):
+    request_id = make_request(shift_start="14:00", shift_end="22:00")
+    pid = make_placement(request_id=request_id, candidate_id=make_candidate())
+    start_placement(session, pid, kigali_today())
+    log_attendance(session, pid, kigali_today(), False, "employer",
+                   absence_reason="no-show")
+    return pid
+
+
+def test_cover_without_consent_is_refused(session, make_placement,
+                                          make_candidate, make_request):
+    """offer_placement re-runs the matching filters rather than trusting its
+    caller. record_replacement trusted its caller completely -- and it is the
+    path used under the most time pressure, which is exactly when a safeguard
+    gets skipped.
+    """
+    pid = a_no_show(session, make_placement, make_candidate)
+    nobody = make_candidate(name="Never Asked", consented=False)
+
+    with pytest.raises(Exception, match="no consent on record"):
+        record_replacement(session, pid, nobody, "coordinator choice")
+
+
+def test_cover_after_dark_without_an_opt_in_is_refused(
+    session, make_placement, make_candidate, make_request
+):
+    """A woman sent to a shift finishing at 22:00, with no employer-covered
+    transport and no opt-in, was recordable as cover. The blueprint makes this
+    a product requirement, not a reporting line."""
+    pid = after_dark_no_show(session, make_placement, make_candidate, make_request)
+
+    with pytest.raises(Exception, match="after dark"):
+        record_replacement(session, pid, make_candidate(name="Sent Anyway",
+                                                        gender="F"),
+                           "coordinator choice")
+
+
+def test_her_own_opt_in_is_what_permits_it(session, make_placement,
+                                           make_candidate, make_request):
+    """Guards the guard, and says who may decide.
+
+    The opt-in belongs to the candidate. A coordinator cannot consent on her
+    behalf, so there is no override here -- the escape is the one the blueprint
+    names, and it is hers.
+    """
+    pid = after_dark_no_show(session, make_placement, make_candidate, make_request)
+    opted = make_candidate(name="Opted In", gender="F")
+    session.execute(
+        text("UPDATE candidates SET accepts_after_dark = true "
+             "WHERE candidate_id = :c"),
+        {"c": str(opted)},
+    )
+    cover = record_replacement(session, pid, opted, "she has opted in")
+    assert cover is not None
+
+
+def test_an_ordinary_cover_is_not_obstructed(session, make_placement,
+                                             make_candidate):
+    """Guards the guard: a check that refused everybody would pass every test
+    above while making the guarantee impossible to honour."""
+    pid = a_no_show(session, make_placement, make_candidate)
+    assert record_replacement(session, pid, make_candidate(name="Fine"),
+                              "nearest available") is not None
+
+
+def test_a_shift_that_has_already_ended_still_checks_the_person(
+    session, make_placement, make_candidate, make_request
+):
+    """The hole in the first version of this guard.
+
+    It asked find_cover whether the candidate was excluded. find_cover answers
+    "who could still get there", and returns early with no per-candidate
+    rejections at all once the window has closed -- so every candidate came
+    back unexcluded for every shift already over, which is most of the ones
+    being recorded after the fact. The rights filters do not depend on the
+    clock and are asked separately now.
+    """
+    request_id = make_request(shift_start="06:00", shift_end="07:00")
+    pid = make_placement(request_id=request_id, candidate_id=make_candidate())
+    start_placement(session, pid, kigali_today())
+    log_attendance(session, pid, kigali_today(), False, "employer",
+                   absence_reason="no-show")
+
+    with pytest.raises(Exception, match="no consent on record"):
+        record_replacement(session, pid, make_candidate(name="Late", consented=False),
+                           "recorded after the shift ended")

@@ -295,7 +295,7 @@ def test_a_candidate_without_consent_is_not_messaged(
     session, make_placement, make_candidate
 ):
     """The fixture candidate has no consent record, so the guard applies."""
-    pid = make_placement(candidate_id=make_candidate())
+    pid = make_placement(candidate_id=make_candidate(consented=False))
     on_placement_offered(session, pid)
 
     provider = RecordingProvider()

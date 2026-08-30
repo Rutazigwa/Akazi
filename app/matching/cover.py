@@ -144,19 +144,26 @@ def find_cover(
     )
 
 
-def _cover_exclusion(
-    c: Candidate, r: WorkRequest, clock: time, remaining: int
-) -> tuple[str, str] | None:
-    """Cover's own hard filters. Legal ones first, then physical ones."""
+def rights_exclusion(c: Candidate, r: WorkRequest) -> tuple[str, str] | None:
+    """The filters that do not depend on what time it is.
+
+    Separated from the physical ones because they answer a different question.
+    Whether somebody can reach a shift before it ends is a fact about the
+    clock; whether they are old enough, consented, safe to send after dark and
+    not paying a third of the wage to get there is not, and stays true whether
+    or not cover is still worth attempting.
+
+    That distinction is load-bearing. find_cover returns early when the window
+    has closed -- rightly, there is nothing to rank -- and produces no
+    per-candidate rejections at all. A write path that asked find_cover
+    "is this person excluded?" therefore got silence for every candidate on
+    every shift that had already ended, which is most of the ones a coordinator
+    is recording after the fact.
+    """
     if not c.age_eligible and not c.meets_minimum_age(r.starts_on):
         return ("hard exclusion", "below the minimum working age")
     if not c.has_placement_consent:
         return ("hard exclusion", "no consent on record")
-
-    # Already working. The general matcher checks for a conflicting commitment
-    # too, but here it is the most common reason and worth saying plainly.
-    if c.has_conflicting_commitment:
-        return ("already working", "already on a shift in this window")
 
     transport = _transport_viability(c, r)
     if transport is not None:
@@ -165,6 +172,22 @@ def _cover_exclusion(
     safety = _safety(c, r)
     if safety is not None:
         return ("safety", safety)
+
+    return None
+
+
+def _cover_exclusion(
+    c: Candidate, r: WorkRequest, clock: time, remaining: int
+) -> tuple[str, str] | None:
+    """Cover's own hard filters. Legal ones first, then physical ones."""
+    rights = rights_exclusion(c, r)
+    if rights is not None:
+        return rights
+
+    # Already working. The general matcher checks for a conflicting commitment
+    # too, but here it is the most common reason and worth saying plainly.
+    if c.has_conflicting_commitment:
+        return ("already working", "already on a shift in this window")
 
     # The physical question, and the one that makes this different from
     # ordinary matching.

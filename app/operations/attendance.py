@@ -350,6 +350,44 @@ def log_attendance(
     )
 
 
+# What a coordinator may not decide at 08:40, and what they may.
+#
+# offer_placement re-runs the matching filters rather than trusting its caller
+# -- "a coordinator working from a list rendered ten minutes ago must not be
+# able to offer work to someone who has since failed the transport, safety or
+# consent filters". record_replacement trusted its caller completely, and it is
+# the path used under the most time pressure, which is exactly when a safeguard
+# gets skipped. Verified: a woman with no consent record at all could be
+# recorded as cover for a shift ending at 22:00 with no employer-covered
+# transport.
+#
+# find_cover already applies all of these; nothing here was reaching it,
+# because the write path never asked.
+#
+# Refused, because they are somebody's rights rather than an operational
+# judgement: age, consent, the after-dark safety filter, and a fare that eats
+# the wage. cover.rights_exclusion is the single list, shared with find_cover.
+#
+# Left to the coordinator: whether anybody can physically get there in time.
+# Our arrival estimate can be wrong in ways they know about -- she is already
+# in that part of town, or somebody is driving her -- and "already working" is
+# refused by the database regardless of what any of this decides.
+
+
+def _refuse_unsafe_cover(session, failed_placement_id, candidate_id) -> None:
+    from app.matching.repository import cover_rights_exclusion
+
+    excluded = cover_rights_exclusion(session, failed_placement_id, candidate_id)
+    if excluded is None:
+        return
+
+    _, reason = excluded
+    raise AttendanceError(
+        f"this person cannot cover this shift: {reason}. Covering a shift "
+        f"does not suspend the filters -- this is the moment they exist for."
+    )
+
+
 def record_replacement(
     session: Session,
     failed_placement_id: UUID,
@@ -383,6 +421,8 @@ def record_replacement(
             f"placement {failed_placement_id} has status "
             f"{failed['status']!r}; replacements cover no-shows"
         )
+
+    _refuse_unsafe_cover(session, failed_placement_id, candidate_id)
 
     new_id = session.execute(
         text(

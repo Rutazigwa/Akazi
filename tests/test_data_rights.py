@@ -40,7 +40,7 @@ TODAY = kigali_today()
 def test_export_covers_everything_held_about_a_person(
     session, make_placement, make_candidate, staff_id
 ):
-    cid = make_candidate(name="Aline")
+    cid = make_candidate(consented=False, name="Aline")
     pid = make_placement(candidate_id=cid)
     start_placement(session, pid, TODAY)
     log_attendance(session, pid, TODAY, True, "employer", hours_worked=8)
@@ -220,7 +220,7 @@ def test_consent_history_survives_erasure(session, make_candidate, staff_id):
     """Erasing the proof we had a lawful basis is the opposite of compliance."""
     from app.operations.registry import record_consent
 
-    cid = make_candidate()
+    cid = make_candidate(consented=False)
     record_consent(session, cid, "placement", True, "paper", staff_id)
 
     erasure_id = request_erasure(session, cid, "paper", staff_id)
