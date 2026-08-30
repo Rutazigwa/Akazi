@@ -36,16 +36,19 @@
 <div class="card">
   <h2>Outcome report for the LMIS</h2>
   <p class="small muted">
-    Grouped and disclosure-controlled: cells under {{ min_cell }} are suppressed,
+    Whole calendar months only, grouped and disclosure-controlled: cells under
+    {{ min_cell }} are suppressed,
     and no identifier of any kind is included — not even our own record ids,
-    which are stable across exports.
+    which are stable across exports. The window must start on the first of a
+    month and end on the last, because suppression does not survive two reports
+    a day apart being subtracted from each other.
   </p>
   <form method="get" action="/lmis/report.csv">
     <div class="grid">
       <div><label for="starts_on">From</label>
-        <input id="starts_on" name="starts_on" type="date" value="{{ default_from }}" required></div>
+        <input id="starts_on" name="starts_on" type="date" value="{{ default_window.starts_on }}" required></div>
       <div><label for="ends_on">To</label>
-        <input id="ends_on" name="ends_on" type="date" value="{{ today }}" required></div>
+        <input id="ends_on" name="ends_on" type="date" value="{{ default_window.ends_on }}" required></div>
     </div>
     <p><button>Download CSV</button></p>
   </form>

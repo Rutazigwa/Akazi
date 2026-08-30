@@ -9,7 +9,7 @@ an incident.
 from __future__ import annotations
 
 import os
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import text
@@ -23,6 +23,7 @@ from app.operations.lmis import (
     LMISError,
     ReportWindow,
     build_report,
+    whole_months_ending_before,
     placement_outcomes,
     reporting_consent_counts,
     summary,
@@ -32,15 +33,31 @@ from app.operations.lmis import (
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
 TODAY = kigali_today()
-WINDOW = ReportWindow(starts_on=TODAY - timedelta(days=90), ends_on=TODAY)
+
+# The last complete calendar month. Not "90 days back from today": a window
+# that moves every day, or that covers a month still filling up, is what let
+# two exports a day apart be subtracted from each other. See ReportWindow.
+WINDOW = whole_months_ending_before(TODAY, 1)
+# Somewhere inside it, for placements that must fall in the window.
+IN_WINDOW = WINDOW.starts_on + timedelta(days=3)
 
 
 def place(session, make_placement, make_candidate, n=1, gender="F", started=True):
+    """Placements inside the reporting window.
+
+    offered_at is moved into the window explicitly: reports cover complete
+    months, so work offered today is in a month that has not ended and is
+    correctly invisible to them.
+    """
     ids = []
     for _ in range(n):
         pid = make_placement(candidate_id=make_candidate(gender=gender))
+        session.execute(
+            text("UPDATE placements SET offered_at = :d WHERE placement_id = :p"),
+            {"d": f"{IN_WINDOW} 09:00+02", "p": str(pid)},
+        )
         if started:
-            start_placement(session, pid, TODAY)
+            start_placement(session, pid, IN_WINDOW)
         ids.append(pid)
     return ids
 
@@ -137,7 +154,11 @@ def test_net_earnings_after_transport_is_reported(
     pid = make_placement(
         candidate_id=make_candidate(), pay_rwf=5000, transport_rwf=1150
     )
-    start_placement(session, pid, TODAY)
+    session.execute(
+        text("UPDATE placements SET offered_at = :d WHERE placement_id = :p"),
+        {"d": f"{IN_WINDOW} 09:00+02", "p": str(pid)},
+    )
+    start_placement(session, pid, IN_WINDOW)
     totals = summary(session, WINDOW)
     assert totals["mean_daily_pay_rwf"] == 5000
     assert totals["mean_daily_transport_rwf"] == 1150
@@ -168,15 +189,16 @@ def test_retention_counts_only_answered_checkins(
 
 def test_the_window_is_respected(session, make_placement, make_candidate):
     place(session, make_placement, make_candidate, n=2)
-    old = ReportWindow(
-        starts_on=TODAY - timedelta(days=400), ends_on=TODAY - timedelta(days=300)
-    )
+    old = whole_months_ending_before(TODAY, 14)
+    old = ReportWindow(starts_on=old.starts_on,
+                       ends_on=whole_months_ending_before(TODAY, 13).starts_on
+                       - timedelta(days=1))
     assert summary(session, old)["placements"] == 0
 
 
 def test_a_backwards_window_is_refused():
     with pytest.raises(LMISError, match="cannot end before it starts"):
-        ReportWindow(starts_on=TODAY, ends_on=TODAY - timedelta(days=1))
+        ReportWindow(starts_on=WINDOW.ends_on, ends_on=WINDOW.starts_on)
 
 
 # --- consent ---------------------------------------------------------------
@@ -232,3 +254,82 @@ def test_the_report_over_http(client, session, make_placement, make_candidate):
     assert csv_response.status_code == 200
     assert csv_response.headers["content-type"].startswith("text/csv")
     assert "attachment" in csv_response.headers["content-disposition"]
+
+
+# --- suppression against a caller who chooses the window -------------------
+
+def test_two_windows_a_day_apart_cannot_be_subtracted(session, make_placement,
+                                                      make_candidate):
+    """The attack this alignment exists to stop.
+
+    With arbitrary dates, nine placements in one sector, district and work type
+    published like this:
+
+        end date    placements
+        day  4          <5
+        day  5           5      -> exactly one placement on day 5
+        day  6           6      -> exactly one placement on day 6
+
+    Suppression protected the first four and nothing after: once the cumulative
+    count crosses MIN_CELL every later day is recoverable by subtracting
+    consecutive windows, giving an exact per-day count at a granularity this
+    module says is not anonymous.
+    """
+    base = WINDOW.starts_on
+    for offset in range(9):
+        pid = make_placement(candidate_id=make_candidate())
+        session.execute(
+            text("UPDATE placements SET offered_at = :d WHERE placement_id = :p"),
+            {"d": f"{base + timedelta(days=offset)} 09:00+02", "p": str(pid)},
+        )
+
+    for days in (4, 5, 6):
+        with pytest.raises(LMISError, match="last day of a month"):
+            ReportWindow(starts_on=base, ends_on=base + timedelta(days=days))
+
+
+def test_a_month_still_in_progress_is_refused(session):
+    """A window nominally ending on the 31st, requested on the 12th, covers a
+    month that is still filling up -- so the same export run a day later
+    differs by one day's placements. The attack again, with the dates hidden.
+    """
+    first_of_this_month = date(TODAY.year, TODAY.month, 1)
+    last_of_this_month = (
+        date(TODAY.year + 1, 1, 1) if TODAY.month == 12
+        else date(TODAY.year, TODAY.month + 1, 1)
+    ) - timedelta(days=1)
+
+    with pytest.raises(LMISError, match="not over yet"):
+        ReportWindow(starts_on=first_of_this_month, ends_on=last_of_this_month)
+
+
+def test_whole_months_are_still_reportable(session, make_placement,
+                                           make_candidate):
+    """Guards the guard.
+
+    A validation that refused everything would pass both tests above while
+    making the export useless -- and the export is a contract and political
+    cover, not an optional extra.
+    """
+    place(session, make_placement, make_candidate, n=6)
+    rows = placement_outcomes(session, WINDOW)
+    assert rows and rows[0]["placements"] == 6
+
+    quarter = whole_months_ending_before(TODAY, 3)
+    assert quarter.starts_on.day == 1
+    assert placement_outcomes(session, quarter)[0]["placements"] == 6
+
+
+def test_the_default_window_the_page_offers_is_acceptable(web):
+    """The form's own defaults must satisfy the rule it explains.
+
+    Its previous default -- ninety days back from today -- is now refused, and
+    a page offering a window its own endpoint rejects is worse than no default.
+    """
+    page = " ".join(web.get("/ui/reports").text.split())
+    import re
+
+    dates = re.findall(r'name="(?:starts_on|ends_on)" type="date" value="([\d-]+)"', page)
+    assert len(dates) == 2, page[:300]
+    starts, ends = (date.fromisoformat(d) for d in dates)
+    ReportWindow(starts_on=starts, ends_on=ends)  # must not raise

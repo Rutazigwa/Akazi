@@ -24,7 +24,7 @@ reported on.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -42,12 +42,85 @@ class LMISError(Exception):
 
 @dataclass(frozen=True)
 class ReportWindow:
+    """A whole number of calendar months, and nothing else.
+
+    Cell suppression does not survive a caller who chooses the window. With
+    arbitrary dates, two windows one day apart can be differenced:
+
+        end date    placements published
+        day  4          <5
+        day  5           5      -> exactly one placement on day 5
+        day  6           6      -> exactly one placement on day 6
+
+    Demonstrated on nine placements in one sector, district and work type.
+    Suppression protected the first four and nothing after: once the cumulative
+    count crosses MIN_CELL, every subsequent day is recoverable by subtracting
+    consecutive windows, giving an exact per-day count at a granularity this
+    module's own docstring says is not anonymous -- "a single female placement
+    in one sector of one district is not anonymous to anyone who works there".
+
+    Aligning to whole months closes it. Any two aligned windows differ by whole
+    months, and each of those is a period that could have been reported on its
+    own -- so the difference tells an attacker nothing a legitimate request
+    would not have. It is also the shape a national statistics feed wants:
+    monthly and quarterly submissions, not arbitrary slices.
+    """
+
     starts_on: date
     ends_on: date
 
     def __post_init__(self) -> None:
         if self.ends_on < self.starts_on:
             raise LMISError("the reporting window cannot end before it starts")
+
+        if self.starts_on.day != 1:
+            raise LMISError(
+                f"a reporting window starts on the first of a month; "
+                f"{self.starts_on} is not. Suppression only holds when windows "
+                f"cannot be slid past each other a day at a time."
+            )
+
+        if self.ends_on != _last_day_of_month(self.ends_on):
+            raise LMISError(
+                f"a reporting window ends on the last day of a month; "
+                f"{self.ends_on} is not. Suppression only holds when windows "
+                f"cannot be slid past each other a day at a time."
+            )
+
+        # And the month has to be over. A window nominally ending on the 31st,
+        # requested on the 12th, covers a month that is still filling up -- so
+        # the same export run twice a day apart differs by exactly one day's
+        # placements, which is the attack again with the dates hidden.
+        from app.clock import kigali_today
+
+        today = kigali_today()
+        if self.ends_on >= date(today.year, today.month, 1):
+            raise LMISError(
+                f"the month ending {self.ends_on} is not over yet. A report "
+                f"covering a month still in progress changes every day, and "
+                f"two runs of it can be subtracted from each other."
+            )
+
+
+def _last_day_of_month(day: date) -> date:
+    first_next = (
+        date(day.year + 1, 1, 1) if day.month == 12
+        else date(day.year, day.month + 1, 1)
+    )
+    return first_next - timedelta(days=1)
+
+
+def whole_months_ending_before(today: date, months: int) -> ReportWindow:
+    """The last `months` complete calendar months before today.
+
+    The current month is deliberately excluded: a window ending today would
+    move every day, which is the differencing attack with extra steps.
+    """
+    end = date(today.year, today.month, 1) - timedelta(days=1)
+    start = end
+    for _ in range(months - 1):
+        start = date(start.year, start.month, 1) - timedelta(days=1)
+    return ReportWindow(starts_on=date(start.year, start.month, 1), ends_on=end)
 
 
 def _suppress(value: int | None) -> int | str | None:

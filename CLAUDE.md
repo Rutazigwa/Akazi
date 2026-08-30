@@ -1522,6 +1522,20 @@ optimality at this volume.
    *"matched on: availability, retail greeting 4/5, 12-min commute"* and be able
    to defend the choice to the employer.
 
+### The LMIS export reports whole months, and only complete ones
+
+Cell suppression does not survive a caller who chooses the window. Two reports
+a day apart can be subtracted: once a cell's cumulative count crosses the
+threshold of 5, every subsequent day's count is recoverable exactly, giving a
+per-day figure by sector, district and work type. Demonstrated on nine
+placements — suppression protected the first four and nothing after.
+
+So `ReportWindow` accepts only whole calendar months that have already ended.
+Any two aligned windows differ by whole months, each of which is a period that
+could have been requested on its own, so the difference discloses nothing a
+legitimate request would not. A month still in progress is refused for the same
+reason: the same nominal window run twice differs by a day's placements.
+
 ### Women's participation is a product requirement, not a reporting line
 
 Female unemployment is 15.5% against 11.6% male. Build for the gap: shift-time

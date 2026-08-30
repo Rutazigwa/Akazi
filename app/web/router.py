@@ -48,7 +48,11 @@ from app.operations.escalations import (
     open_escalations,
     response_performance,
 )
-from app.operations.lmis import MIN_CELL, reporting_consent_counts
+from app.operations.lmis import (
+    MIN_CELL,
+    reporting_consent_counts,
+    whole_months_ending_before,
+)
 from app.operations.catalogue import (
     CATEGORIES,
     METHODS,
@@ -570,7 +574,10 @@ def reports_page(request: Request, session: SessionDep, staff: WebStaffDep):
         performance=response_performance(session),
         consent=reporting_consent_counts(session),
         min_cell=MIN_CELL,
-        default_from=(kigali_today() - timedelta(days=90)).isoformat(),
+        # The last three complete calendar months. Not "90 days back from
+        # today": a window that moves every day is what let two exports a day
+        # apart be subtracted from each other.
+        default_window=whole_months_ending_before(kigali_today(), 3),
         **_flash(request),
     )
 
