@@ -170,6 +170,14 @@ def test_a_coordinators_working_day(client, session):
         json={"candidate_id": cover, "match_reason": "matched on: availability"},
     )
     assert replacement.status_code == 201
+
+    # Offered is not covered. Claudine has to say yes -- the guarantee is that
+    # the shift gets worked, not that we rang somebody about it.
+    assert len(client.get("/guarantees/open").json()["open"]) == 1
+    assert client.post(
+        f"/placements/{replacement.json()['placement_id']}/response",
+        json={"accepted": True},
+    ).status_code == 200
     assert client.get("/guarantees/open").json()["open"] == []
 
     # --- the scorecard reflects the day -----------------------------------

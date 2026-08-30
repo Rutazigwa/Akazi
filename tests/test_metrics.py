@@ -46,7 +46,14 @@ def test_guarantee_fill_rate_counts_only_fills_inside_24h(
     start_placement(session, covered, TODAY)
     log_attendance(session, covered, TODAY, False, "employer",
                    absence_reason="no-show")
-    record_replacement(session, covered, make_candidate(name="Cover"), "matched")
+    cover = record_replacement(session, covered, make_candidate(name="Cover"),
+                               "matched")
+    # Accepted, not merely offered. A cover that has not agreed to work has
+    # not covered the shift, and one who declined certainly has not.
+    session.execute(
+        text("UPDATE placements SET status = 'accepted' WHERE placement_id = :p"),
+        {"p": str(cover)},
+    )
 
     uncovered = make_placement()
     start_placement(session, uncovered, TODAY)
@@ -65,14 +72,19 @@ def test_a_late_fill_counts_as_a_breach(
     start_placement(session, pid, TODAY)
     log_attendance(session, pid, TODAY, False, "employer",
                    absence_reason="no-show")
-    record_replacement(session, pid, make_candidate(name="Late cover"), "matched")
-
-    # Backdate the invocation so the fill lands outside the 24-hour window.
+    cover = record_replacement(session, pid, make_candidate(name="Late cover"),
+                               "matched")
     session.execute(
-        text(
-            "UPDATE attendance SET confirmed_at = now() - INTERVAL '30 hours' "
-            "WHERE placement_id = :pid"
-        ),
+        text("UPDATE placements SET status = 'accepted' WHERE placement_id = :p"),
+        {"p": str(cover)},
+    )
+
+    # Backdate the SHIFT, not the moment we noticed. The window runs from when
+    # the employer was let down; moving confirmed_at used to move the deadline
+    # with it, which made the metric easier the slower we were to notice.
+    session.execute(
+        text("UPDATE attendance SET work_date = work_date - 2 "
+             "WHERE placement_id = :pid"),
         {"pid": pid},
     )
     row = session.execute(

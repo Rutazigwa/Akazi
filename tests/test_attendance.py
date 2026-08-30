@@ -278,6 +278,19 @@ def test_a_covered_no_show_leaves_the_open_list(
     start_placement(session, pid, TODAY)
     log_attendance(session, pid, TODAY, False, "employer", absence_reason="no-show")
     record_replacement(session, pid, make_candidate(name="Cover"), "matched on: x")
+
+    # An offer that has gone out is not a shift that is covered. It stays on
+    # the list, marked so nobody offers it to a second person -- the guarantee
+    # is met when somebody agrees to work, not when we make a phone call.
+    still_open = open_guarantees(session)
+    assert len(still_open) == 1
+    assert still_open[0]["awaiting_reply_name"] == "Cover"
+
+    session.execute(
+        text("UPDATE placements SET status = 'accepted' "
+             "WHERE replaces_placement = :p"),
+        {"p": str(pid)},
+    )
     assert open_guarantees(session) == []
 
 

@@ -58,6 +58,17 @@ def test_no_show_to_covered_shift(client, session, make_placement, make_candidat
     assert replacement.status_code == 201
     assert replacement.json()["replaces"] == str(pid)
 
+    # Offered, not yet agreed. The shift is still uncovered, and the list says
+    # who is being waited on so nobody offers it to a second person.
+    pending = client.get("/guarantees/open").json()["open"]
+    assert len(pending) == 1
+    assert pending[0]["awaiting_reply_name"] == "Cover Worker"
+
+    accepted = client.post(
+        f"/placements/{replacement.json()['placement_id']}/response",
+        json={"accepted": True},
+    )
+    assert accepted.status_code == 200
     assert client.get("/guarantees/open").json()["open"] == []
 
     card = client.get("/metrics/scorecard").json()

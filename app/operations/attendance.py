@@ -429,7 +429,18 @@ def record_replacement(
 
 
 def open_guarantees(session: Session) -> list[dict]:
-    """No-shows still without a replacement, most urgent first."""
+    """No-shows nobody is covering yet, most urgent first.
+
+    An offer that has gone out but not been answered is a third state, and
+    collapsing it into either of the other two is wrong in a different way.
+    Treated as filled, we stop working on a shift nobody has agreed to cover.
+    Treated as open, a coordinator rings somebody else and two workers turn up
+    -- which is what idx_one_live_replacement_per_placement refuses, so the
+    second offer fails at the database with an integrity error.
+
+    So it is carried as awaiting_reply: still on the list, because it is not
+    covered, and marked so nobody offers it twice.
+    """
     rows = session.execute(
         text(
             """
@@ -439,10 +450,20 @@ def open_guarantees(session: Session) -> list[dict]:
                    g.invoked_at + INTERVAL '24 hours' AS due_by,
                    (now() > g.invoked_at + INTERVAL '24 hours') AS breached,
                    e.business_name,
-                   wr.title
+                   wr.title,
+                   pending.placement_id  AS awaiting_reply_placement_id,
+                   pending.display_name  AS awaiting_reply_name
             FROM v_guarantee_invocations g
             JOIN work_requests wr ON wr.request_id = g.request_id
             JOIN employers e      ON e.employer_id = wr.employer_id
+            LEFT JOIN LATERAL (
+                SELECT p.placement_id, c.display_name
+                  FROM placements p
+                  JOIN candidates c ON c.candidate_id = p.candidate_id
+                 WHERE p.replaces_placement = g.failed_placement_id
+                   AND p.status = 'offered'
+                 LIMIT 1
+            ) pending ON true
             WHERE g.replacement_placement_id IS NULL
             ORDER BY g.invoked_at ASC
             """
