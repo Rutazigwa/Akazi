@@ -1522,6 +1522,23 @@ optimality at this volume.
    *"matched on: availability, retail greeting 4/5, 12-min commute"* and be able
    to defend the choice to the employer.
 
+### A harassment report starts the clock even from a number we cannot place
+
+Almost every inbound message needs to know who is speaking: you cannot cancel
+somebody's shift or accept an offer on their behalf from an unauthenticated
+message, so those wait for a human to work out who sent it.
+
+A safeguarding report is not like that. What it triggers is "somebody looks at
+this within two hours", which is safe to do on a message from a number we
+cannot place — she may be borrowing a phone precisely because of what she is
+reporting. `SAFEGUARDING` in `app/messaging/inbound.py` is the narrow list of
+kinds this applies to; everything else still waits.
+
+Keep the exception narrow in both directions. Escalating anything at all from
+an unknown number would bury the real reports under wrong numbers and
+gibberish, which is the same failure as a hundred SMS at once, approached from
+the other side.
+
 ### The LMIS export reports whole months, and only complete ones
 
 Cell suppression does not survive a caller who chooses the window. Two reports

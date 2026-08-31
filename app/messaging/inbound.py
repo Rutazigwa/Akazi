@@ -104,6 +104,12 @@ class Interpretation:
     issue_kind: str | None = None
 
 
+# Kinds where the response is "a human looks at this now", which needs no
+# knowledge of who sent it. Everything else acts on somebody's placement and
+# must know whose.
+SAFEGUARDING = frozenset({"harassment", "safety"})
+
+
 def interpret(body: str) -> Interpretation:
     """Work out what a reply meant, or admit we could not tell.
 
@@ -195,6 +201,41 @@ def handle(session: Session, inbound_id: UUID) -> str:
     reading = interpret(message["body"])
 
     if message["candidate_id"] is None and message["contact_id"] is None:
+        # Almost everything needs to know who is speaking: you cannot cancel
+        # somebody's shift or accept an offer on their behalf from an
+        # unauthenticated message, so those wait for a human to work out who
+        # sent it.
+        #
+        # A safeguarding report is not like that. The action it triggers is
+        # "somebody looks at this within two hours", and that is safe to do on
+        # a message from a number we cannot place -- she may be borrowing a
+        # phone precisely because of what she is reporting. Parking it made the
+        # response time the blueprint promises conditional on our being able to
+        # identify her, and put it in the same queue as the messages that read
+        # "???".
+        if reading.intent == "issue_reported" and reading.issue_kind in SAFEGUARDING:
+            try:
+                raise_escalation(
+                    session,
+                    reading.issue_kind,
+                    inbound_id=inbound_id,
+                    detail=message["body"],
+                )
+            except EscalationError as exc:
+                # Same rule as the attributed path: never swallow it. An
+                # escalation with nobody to own it is refused deliberately, and
+                # the report has to stay visible rather than disappear with the
+                # exception.
+                return _finish(
+                    session, inbound_id, reading.intent,
+                    f"could not raise escalation: {exc}", handled=False,
+                )
+            return _finish(
+                session, inbound_id, reading.intent,
+                f"{reading.issue_kind} escalation raised from an unrecognised "
+                f"number -- nobody is attached to it yet",
+            )
+
         return _finish(
             session, inbound_id, reading.intent,
             "from a number we do not recognise -- needs a human",
