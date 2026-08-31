@@ -241,4 +241,7 @@ form.act {
   margin: .25rem 0;
 }
 form.act button { white-space: nowrap; }
+/* A dropdown of two words does not need half the card. Text inputs still
+   take the slack, because a reason box wants the room. */
+form.act select { flex: 0 0 auto; width: auto; }
 form.act > .small { flex: 1 0 100%; margin: 0; }

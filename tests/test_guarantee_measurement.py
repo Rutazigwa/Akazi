@@ -314,3 +314,58 @@ def test_the_history_of_what_she_agreed_to_survives(session, make_candidate,
     # overwritten -- the table refuses updates outright.
     assert [r["granted"] for r in history] == [False, True, False]
     assert all(r["captured_at"] is not None for r in history)
+
+
+# --- and a way to actually record it ---------------------------------------
+
+def test_the_api_accepts_the_purpose_the_database_now_allows(client, session,
+                                                             make_candidate):
+    """Migration 056 widened the database CHECK and this pattern was missed.
+
+    The one endpoint that could record a withdrawal refused the only purpose
+    that needed withdrawing, so "withdrawing is recording a new one" was true
+    of the data model and false of the system.
+    """
+    cid = make_candidate(name="Asked Again")
+    session.commit()
+    response = client.post(
+        f"/candidates/{cid}/consent",
+        json={"purpose": "after_dark", "granted": True, "captured_via": "paper"},
+    )
+    assert response.status_code == 201, response.text
+
+
+def test_a_coordinator_can_record_it_in_the_browser(web, session,
+                                                    make_candidate):
+    """Coordinators work in the browser -- an API-only path is no path.
+
+    Recording appends, so the history stays: the page shows what she said and
+    when, which is what gets asked after something has happened.
+    """
+    from tests.conftest import csrf
+
+    cid = make_candidate(name="Changed Her Mind", gender="F")
+    session.commit()
+
+    page = web.get(f"/ui/candidates/{cid}").text
+    assert "does not accept" in page
+
+    web.post(f"/ui/candidates/{cid}/after-dark",
+             data={"csrf_token": csrf(page), "granted": "true",
+                   "captured_via": "whatsapp"},
+             follow_redirects=True)
+    assert "accepts" in web.get(f"/ui/candidates/{cid}").text
+
+    # ...and back again, because the direction that matters is withdrawal.
+    page = web.get(f"/ui/candidates/{cid}").text
+    web.post(f"/ui/candidates/{cid}/after-dark",
+             data={"csrf_token": csrf(page), "granted": "false",
+                   "captured_via": "whatsapp"},
+             follow_redirects=True)
+
+    history = session.execute(
+        text("SELECT granted FROM consent_records WHERE candidate_id = :c "
+             "AND purpose = 'after_dark' ORDER BY captured_at"),
+        {"c": str(cid)},
+    ).scalars().all()
+    assert history == [False, True, False], "nothing may be overwritten"

@@ -1449,7 +1449,8 @@ def candidate_page(
         text(
             """
             SELECT candidate_id, display_name, district, sector, gender,
-                   status::text AS status
+                   status::text AS status,
+                   accepts_after_dark(candidate_id) AS accepts_after_dark
               FROM candidates WHERE candidate_id = :cid
             """
         ),
@@ -1520,6 +1521,40 @@ def candidate_page(
         placements=[dict(p) for p in placements],
         assessments=list_assessments(session),
         **_flash(request),
+    )
+
+
+@router.post("/candidates/{candidate_id}/after-dark")
+async def set_after_dark(
+    candidate_id: UUID, request: Request, session: SessionDep,
+    staff: CsrfStaffDep,
+):
+    """Record what she has said about shifts that finish after dark.
+
+    Recording, not toggling. The value is the latest consent row, so changing
+    her mind appends rather than overwrites and the history stays intact --
+    "did she agree to that, and when" is asked after something has happened.
+
+    There was no path to this at all. The opt-in was written once at
+    registration and nothing in the application could change it, so a woman who
+    said no to a stranger with a clipboard was excluded from evening work
+    permanently, and one who said yes could never take it back.
+    """
+    from app.operations.registry import record_consent
+
+    form = await request.form()
+    granted = form.get("granted") == "true"
+    via = form.get("captured_via") or "paper"
+
+    record_consent(
+        session, candidate_id, purpose="after_dark", granted=granted,
+        captured_via=via, captured_by=staff.staff_id,
+    )
+    return _back(
+        f"/ui/candidates/{candidate_id}",
+        "Recorded: she "
+        + ("accepts" if granted else "does not accept")
+        + " shifts ending after dark",
     )
 
 

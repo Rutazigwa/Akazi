@@ -84,7 +84,12 @@ class NewCandidate(BaseModel):
 
 
 class NewConsent(BaseModel):
-    purpose: str = Field(pattern="^(placement|training|reporting)$")
+    # after_dark is a safety opt-in rather than a data-processing one, and is
+    # here for the same reasons: it must be provable, attributable and
+    # revocable. Migration 056 widened the database CHECK; this pattern was
+    # missed, so the one endpoint that could record a withdrawal refused the
+    # only purpose that needed withdrawing.
+    purpose: str = Field(pattern="^(placement|training|reporting|after_dark)$")
     granted: bool
     captured_via: str = Field(pattern="^(paper|whatsapp|app)$")
 

@@ -100,7 +100,7 @@
         <tr><th>Purpose</th><th>Version</th><th>Granted</th><th>When</th></tr>
         {% for c in consent %}
         <tr>
-          <td>{{ c.purpose }}</td><td class="small">{{ c.policy_version }}</td>
+          <td>{{ c.purpose.replace('_', ' ') }}</td><td class="small">{{ c.policy_version }}</td>
           <td>{{ 'yes' if c.granted else 'no' }}</td>
           <td class="small">{{ c.captured_at.date() }}</td>
         </tr>
@@ -111,6 +111,34 @@
         No consent on record. Matching excludes this person entirely.
       </p>
       {% endif %}
+
+      {#- The one consent that changes. It is the escape from the after-dark
+          safety filter, so it decides whether she can take evening work at
+          all, and it is hers to withdraw. Recording appends: the history above
+          is what answers "did she agree to that, and when". -#}
+      <h3 class="small">Shifts ending after dark</h3>
+      <p class="small muted">
+        {% if candidate.accepts_after_dark %}
+        <span class="pill good">accepts</span>
+        {% else %}
+        <span class="pill warn">does not accept</span>
+        {% endif %}
+        — hers to change, either way. Ask her; do not decide for her.
+      </p>
+      <form class="act" method="post"
+            action="/ui/candidates/{{ candidate.candidate_id }}/after-dark">
+        <input type="hidden" name="csrf_token" value="{{ staff.csrf_token }}">
+        <select name="granted" aria-label="Accepts shifts ending after dark">
+          <option value="true">she accepts them</option>
+          <option value="false" {{ 'selected' if not candidate.accepts_after_dark }}>she does not</option>
+        </select>
+        <select name="captured_via" aria-label="How this was captured">
+          <option value="paper">in person</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="app">app</option>
+        </select>
+        <button class="secondary">Record what she said</button>
+      </form>
     </div>
 
     <div class="card">
