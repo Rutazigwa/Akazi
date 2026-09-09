@@ -79,6 +79,7 @@ from app.operations.scorecard import read_scorecard, summary
 from app.operations.safety import (
     SafetyReportError,
     employer_safety,
+    employers_of_concern,
     record_safety_report,
 )
 from app.operations.transport import (
@@ -572,6 +573,12 @@ def reports_page(request: Request, session: SessionDep, staff: WebStaffDep):
     return _render(
         request, "reports.html", staff, nav="reports",
         performance=response_performance(session),
+        # For the owner rather than the coordinator: the per-employer warning
+        # already reaches the matches screen, but "whose workers have flagged
+        # them, worst first" is a question about whether to keep trading with
+        # somebody, and it had no screen at all. The function existed, was
+        # tested, and was called by nothing.
+        concerning=employers_of_concern(session),
         consent=reporting_consent_counts(session),
         min_cell=MIN_CELL,
         # The last three complete calendar months. Not "90 days back from

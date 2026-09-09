@@ -33,6 +33,46 @@
   {% endif %}
 </div>
 
+<div class="card{% if concerning and concerning[0].warn %} urgent{% endif %}">
+  <h2>Employers their own workers have flagged</h2>
+  {% if concerning %}
+  <table class="stack">
+    <thead>
+    <tr><th>Employer</th><th class="num">Felt unsafe</th>
+        <th class="num">Of whom women</th><th>Concerns</th><th>Last report</th></tr>
+    </thead>
+    <tbody>
+    {% for e in concerning %}
+    <tr>
+      <td data-label="Employer">
+        {% if e.warn %}<span class="pill bad">warning</span> {% endif %}
+        {{ e.business_name }}
+      </td>
+      <td class="num" data-label="Felt unsafe">{{ e.felt_unsafe }} of {{ e.reports }}</td>
+      <td class="num" data-label="Of whom women">{{ e.felt_unsafe_women }} of {{ e.reports_women }}</td>
+      <td data-label="Concerns">
+        {% for c in e.concerns %}<span class="pill warn">{{ c }}</span> {% endfor %}
+      </td>
+      <td class="small muted" data-label="Last report">{{ e.last_reported_at.date() }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="small muted tight-b">
+    Nothing here blocks a placement. A coordinator already sees the warning for
+    a single employer when they match against that employer&rsquo;s shift; this
+    is the same evidence gathered up, because whether to keep trading with
+    somebody is not a shift-by-shift call and is not a coordinator&rsquo;s to
+    make. It is ordered by the women who said they felt unsafe.
+  </p>
+  {% else %}
+  <p class="muted small">
+    Nobody has reported feeling unsafe. This asks every worker at the end of a
+    placement, so an empty list means the question was asked and answered.
+  </p>
+  {% endif %}
+</div>
+
 <div class="card">
   <h2>Outcome report for the LMIS</h2>
   <p class="small muted">

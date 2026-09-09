@@ -286,3 +286,60 @@ def test_the_api_still_requires_a_concern_when_unsafe(client, make_placement):
                           json={"felt_safe": False})
     assert refused.status_code == 422
     assert "what the concern was" in refused.json()["detail"]
+
+
+# --- and somewhere the owner can see it ------------------------------------
+
+def test_the_owner_can_see_which_employers_were_flagged(
+    web, session, make_placement, make_candidate, staff_id
+):
+    """employers_of_concern was called by its own test and nothing else.
+
+    Its docstring names its audience -- "for the owner rather than the
+    coordinator: deciding whether to keep trading with someone is not a
+    shift-by-shift call" -- and there was no screen where the owner saw it. The
+    per-employer warning does reach the coordinator at match time; the
+    aggregate reached nobody.
+    """
+    placement_id = make_placement(candidate_id=make_candidate(gender="F"))
+    record_safety_report(session, placement_id=placement_id, felt_safe=False,
+                         concern="harassment", note="the supervisor shouted")
+    session.commit()
+
+    page = " ".join(web.get("/ui/reports").text.split())
+    assert "Employers their own workers have flagged" in page
+    assert "harassment" in page
+
+
+def test_an_empty_list_says_the_question_was_asked(web, session):
+    """"No reports" and "nobody asked" look identical and are not."""
+    session.commit()
+    page = " ".join(web.get("/ui/reports").text.split())
+    assert "Nobody has reported feeling unsafe" in page
+    assert "the question was asked and answered" in page
+
+
+def test_the_owner_view_still_blocks_nothing(session, make_placement,
+                                             make_candidate, staff_id):
+    """Guards the intent, which is deliberate and stated in the module.
+
+    Refusing to place anyone with an employer is a commercial decision for the
+    owner. A threshold invented in code would make it silently, on evidence a
+    coordinator never saw -- so surfacing this must not quietly become a filter.
+    """
+    from app.matching.repository import find_matches
+
+    placement_id = make_placement(candidate_id=make_candidate(gender="F"))
+    record_safety_report(session, placement_id=placement_id, felt_safe=False,
+                         concern="harassment", note="flagged")
+
+    request_id = session.execute(
+        text("SELECT request_id FROM placements WHERE placement_id = :p"),
+        {"p": str(placement_id)},
+    ).scalar_one()
+    result = find_matches(session, request_id)
+    refused = [r for r in result.rejections if "unsafe" in r.reason.lower()]
+    assert refused == [], (
+        "a safety report turned into a matching filter; that is the owner's "
+        "decision, not this code's"
+    )

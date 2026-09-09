@@ -12,15 +12,29 @@ from __future__ import annotations
 from app.clock import kigali_today
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 from sqlalchemy import text
 
 
 os.environ.setdefault("DATA_RESIDENCY", "local_dev")
 
-# A Monday, so availability windows are predictable.
-MONDAY = date(2026, 9, 7)
+# The shift happens today, and the candidate is available on today's weekday.
+#
+# This was date(2026, 9, 7) -- a fixed Monday, chosen so availability windows
+# were predictable. It worked until the calendar caught up with it. Once
+# migration 055 anchored the guarantee clock to the shift rather than to when
+# we noticed the absence, a no-show on a Monday covered on the following
+# Thursday became what it always was: 72 hours, correctly outside the
+# 24-hour window. Before that migration the clock started at now() and the
+# hardcoded date could not matter; before this date passed, offered_at came
+# *before* invoked_at and the difference was negative, so the assertion held
+# by accident in both directions.
+#
+# A shift today is also the honest scenario: the guarantee is about the 08:00
+# cleaner who has not arrived this morning.
+SHIFT_DAY = kigali_today()
+SHIFT_WEEKDAY = SHIFT_DAY.weekday()
 
 # Two points in Kigali about 2 km apart, and one much further out.
 SITE = (-1.9550, 30.1150)
@@ -43,7 +57,8 @@ def register_candidate(client, name, home, **overrides):
         "max_commute_rwf": 2000,
         "consent_captured_via": "paper",
         "availability": [
-            {"day_of_week": 0, "start": "06:00:00", "end": "20:00:00"}
+            {"day_of_week": SHIFT_WEEKDAY, "start": "06:00:00",
+             "end": "20:00:00"}
         ],
     }
     body.update(overrides)
@@ -93,7 +108,7 @@ def test_a_coordinators_working_day(client, session):
             "title": "Morning cleaner",
             "work_type": "shift",
             "headcount": 1,
-            "starts_on": str(MONDAY),
+            "starts_on": str(SHIFT_DAY),
             "shift_start": "08:00:00",
             "shift_end": "16:00:00",
             "pay_rwf": 5000,
@@ -145,14 +160,14 @@ def test_a_coordinators_working_day(client, session):
 
     # --- the shift starts, and the worker does not arrive -----------------
     started = client.post(
-        f"/placements/{placement_id}/start", json={"started_on": str(MONDAY)}
+        f"/placements/{placement_id}/start", json={"started_on": str(SHIFT_DAY)}
     )
     assert started.status_code == 200
 
     absent = client.post(
         f"/placements/{placement_id}/attendance",
         json={
-            "work_date": str(MONDAY),
+            "work_date": str(SHIFT_DAY),
             "present": False,
             "confirmed_by": "employer",
             "absence_reason": "did not arrive",
@@ -204,7 +219,7 @@ def test_an_offer_is_revalidated_at_the_moment_it_is_made(client, session):
         "/work-requests",
         json={
             "employer_id": employer_id, "title": "Server", "work_type": "shift",
-            "headcount": 1, "starts_on": str(MONDAY), "pay_rwf": 5000,
+            "headcount": 1, "starts_on": str(SHIFT_DAY), "pay_rwf": 5000,
             "pay_unit": "day", "shift_start": "08:00:00", "shift_end": "16:00:00",
         },
     ).json()["request_id"]
@@ -305,7 +320,7 @@ def test_declining_an_offer_reopens_the_request(client):
         "/work-requests",
         json={
             "employer_id": employer_id, "title": "Shop assistant",
-            "work_type": "shift", "headcount": 1, "starts_on": str(MONDAY),
+            "work_type": "shift", "headcount": 1, "starts_on": str(SHIFT_DAY),
             "pay_rwf": 5000, "pay_unit": "day",
             "shift_start": "08:00:00", "shift_end": "16:00:00",
         },
